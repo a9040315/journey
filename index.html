@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🧸 大手牽小手旅行 ✈️💖</title>
+    <title>🧸 大手牽小手旅行 (幣別切換版) ✈️💖</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script type="importmap">
     {
@@ -87,6 +87,18 @@
                             <option value="Ruby">Ruby 付款</option>
                             <option value="Wen">Wen 付款</option>
                         </select>
+
+                        <div class="bg-white p-3 rounded border border-stone-200">
+                            <p class="text-[10px] font-bold text-stone-500 mb-2 uppercase tracking-widest">分帳對象 (誰出錢？)</p>
+                            <div class="flex gap-4">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" id="splitRuby" checked class="w-4 h-4 accent-[var(--jp-indigo)]"> <span class="text-sm">Ruby</span>
+                                </label>
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" id="splitWen" checked class="w-4 h-4 accent-[var(--jp-indigo)]"> <span class="text-sm">Wen</span>
+                                </label>
+                            </div>
+                        </div>
                         
                         <button onclick="addExpense()" class="w-full bg-[var(--jp-bamboo)] text-white py-2 rounded-lg font-bold hover:opacity-90 shadow-md">加入帳單</button>
                     </div>
@@ -95,9 +107,20 @@
                         <div id="expenseHistory" class="text-sm space-y-2 max-h-64 overflow-y-auto"></div>
                     </div>
                 </div>
-                <div class="bg-white p-6 rounded-xl border-2 border-[var(--jp-indigo)] shadow-lg">
-                    <h2 class="text-xl font-bold mb-4 serif-font text-[var(--jp-indigo)]">📊 結算報告</h2>
-                    <div id="settlementReport" class="space-y-6"></div>
+                <div class="bg-white p-6 rounded-xl border-2 border-[var(--jp-indigo)] shadow-lg flex flex-col justify-between">
+                    <div>
+                        <h2 class="text-xl font-bold mb-4 serif-font text-[var(--jp-indigo)]">📊 結算報告</h2>
+                        <div id="settlementReport" class="space-y-6"></div>
+                    </div>
+                    
+                    <div class="mt-8 space-y-3">
+                        <button onclick="exportToText()" class="w-full bg-sky-600 text-white py-3 rounded-lg font-bold hover:bg-sky-700 transition shadow-md flex items-center justify-center gap-2">
+                            💬 複製文字報告 (LINE)
+                        </button>
+                        <button onclick="clearAllExpenses()" class="w-full bg-red-50 text-red-500 py-2 rounded-lg text-sm font-medium hover:bg-red-100 transition border border-red-100">
+                            🗑️ 清空所有帳單
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -196,15 +219,20 @@
 
         window.updateRate = (v) => { travelData.rate = parseFloat(v); pushToCloud(); };
 
-        // --- 分帳功能 (Ruby/Wen) ---
+        // --- 分帳功能 ---
         window.addExpense = () => {
             const name = document.getElementById('expName').value;
             const amtRaw = parseFloat(document.getElementById('expAmount').value);
             const currency = document.getElementById('expCurrency').value;
             const payer = document.getElementById('expPayer').value;
             const rate = travelData.rate || 0.22;
+            
+            const splitWith = [];
+            if(document.getElementById('splitRuby').checked) splitWith.push('Ruby');
+            if(document.getElementById('splitWen').checked) splitWith.push('Wen');
 
             if(!name || !amtRaw) return alert("請輸入項目與金額");
+            if(splitWith.length === 0) return alert("請至少勾選一位分帳人員");
 
             let amtJPY, amtTWD;
             if (currency === 'JPY') {
@@ -222,7 +250,8 @@
                 amtTWD: amtTWD,
                 originalCurrency: currency,
                 originalAmt: amtRaw,
-                payer 
+                payer,
+                splitWith
             });
 
             document.getElementById('expName').value = '';
@@ -239,13 +268,12 @@
             const historyDiv = document.getElementById('expenseHistory');
             const reportDiv = document.getElementById('settlementReport');
             const exps = travelData.expenses || [];
-            const rate = travelData.rate || 0.22;
-
+            
             historyDiv.innerHTML = exps.map(e => `
                 <div class="flex justify-between items-center bg-white p-2 rounded shadow-sm border border-stone-100">
                     <div class="flex flex-col">
                         <span class="font-bold text-stone-700">${e.name}</span>
-                        <span class="text-[10px] text-stone-400">由 ${e.payer} 支付 (${e.originalCurrency === 'JPY' ? '¥' : '$'}${e.originalAmt})</span>
+                        <span class="text-[10px] text-stone-400">由 ${e.payer} 付 / 算 ${e.splitWith ? e.splitWith.join('&') : '兩人'} 的</span>
                     </div>
                     <div class="flex items-center gap-2 font-mono">
                         <div class="text-right">
@@ -257,43 +285,41 @@
                 </div>
             `).reverse().join('') || '<p class="text-stone-400 italic text-center">尚未有支出紀錄</p>';
 
-            let rubyPaidJPY = 0, wenPaidJPY = 0;
             let rubyPaidTWD = 0, wenPaidTWD = 0;
+            let rubyShouldOweTWD = 0, wenShouldOweTWD = 0;
+            let rubyPaidJPY = 0, wenPaidJPY = 0;
+            let rubyShouldOweJPY = 0, wenShouldOweJPY = 0;
 
             exps.forEach(e => { 
-                if(e.payer === 'Ruby') {
-                    rubyPaidJPY += e.amt;
-                    rubyPaidTWD += (e.amtTWD || Math.round(e.amt * rate));
-                } else {
-                    wenPaidJPY += e.amt;
-                    wenPaidTWD += (e.amtTWD || Math.round(e.amt * rate));
-                }
+                if(e.payer === 'Ruby') { rubyPaidJPY += e.amt; rubyPaidTWD += e.amtTWD; }
+                else { wenPaidJPY += e.amt; wenPaidTWD += e.amtTWD; }
+
+                const targets = e.splitWith || ['Ruby', 'Wen'];
+                const shareJPY = e.amt / targets.length;
+                const shareTWD = e.amtTWD / targets.length;
+                if(targets.includes('Ruby')) { rubyShouldOweJPY += shareJPY; rubyShouldOweTWD += shareTWD; }
+                if(targets.includes('Wen')) { wenShouldOweJPY += shareJPY; wenShouldOweTWD += shareTWD; }
             });
 
-            const totalJPY = rubyPaidJPY + wenPaidJPY;
-            const totalTWD = rubyPaidTWD + wenPaidTWD;
-            const avgJPY = totalJPY / 2;
-            const avgTWD = totalTWD / 2;
-            
-            let diffJPY = Math.abs(rubyPaidJPY - avgJPY);
-            let diffTWD = Math.abs(rubyPaidTWD - avgTWD);
+            const rubyBalanceJPY = rubyPaidJPY - rubyShouldOweJPY;
+            const rubyBalanceTWD = rubyPaidTWD - rubyShouldOweTWD;
 
             let resultHtml = "";
-            if (totalJPY === 0) {
+            if (exps.length === 0) {
                 resultHtml = `<div class="p-4 bg-stone-50 rounded text-stone-400 text-center text-sm italic">請開始記錄旅途開銷</div>`;
-            } else if (rubyPaidJPY > wenPaidJPY) {
+            } else if (rubyBalanceJPY > 0) {
                 resultHtml = `
                     <div class="p-4 bg-orange-50 border border-orange-200 rounded text-orange-800 text-center shadow-inner">
                         <strong class="text-sm">Wen 應支付給 Ruby</strong><br>
-                        <span class="text-3xl font-black">¥${diffJPY.toFixed(0)}</span><br>
-                        <span class="text-md font-bold opacity-80">或是約 NT$ ${diffTWD.toFixed(0)}</span>
+                        <span class="text-3xl font-black">¥${Math.abs(rubyBalanceJPY).toFixed(0)}</span><br>
+                        <span class="text-md font-bold opacity-80">或是約 NT$ ${Math.abs(rubyBalanceTWD).toFixed(0)}</span>
                     </div>`;
-            } else if (wenPaidJPY > rubyPaidJPY) {
+            } else if (rubyBalanceJPY < 0) {
                 resultHtml = `
                     <div class="p-4 bg-green-50 border border-green-200 rounded text-green-800 text-center shadow-inner">
                         <strong class="text-sm">Ruby 應支付給 Wen</strong><br>
-                        <span class="text-3xl font-black">¥${diffJPY.toFixed(0)}</span><br>
-                        <span class="text-md font-bold opacity-80">或是約 NT$ ${diffTWD.toFixed(0)}</span>
+                        <span class="text-3xl font-black">¥${Math.abs(rubyBalanceJPY).toFixed(0)}</span><br>
+                        <span class="text-md font-bold opacity-80">或是約 NT$ ${Math.abs(rubyBalanceTWD).toFixed(0)}</span>
                     </div>`;
             } else {
                 resultHtml = `<div class="p-4 bg-blue-50 border border-blue-200 rounded text-blue-800 text-center font-bold">兩邊目前平分！</div>`;
@@ -302,35 +328,46 @@
             reportDiv.innerHTML = `
                 <div class="grid grid-cols-2 gap-4">
                     <div class="p-3 bg-stone-100 rounded text-center">
-                        <p class="text-[10px] text-stone-500 font-bold uppercase tracking-tighter">總支出 (JPY/TWD)</p>
-                        <p class="font-bold text-lg text-[var(--jp-indigo)]">¥${totalJPY}</p>
-                        <p class="text-xs text-stone-400">$${totalTWD}</p>
+                        <p class="text-[10px] text-stone-500 font-bold uppercase">Ruby 已付</p>
+                        <p class="font-bold text-lg text-[var(--jp-indigo)]">¥${rubyPaidJPY}</p>
+                        <p class="text-xs text-stone-400">$${rubyPaidTWD}</p>
                     </div>
                     <div class="p-3 bg-stone-100 rounded text-center">
-                        <p class="text-[10px] text-stone-500 font-bold uppercase tracking-tighter">個人應分 (JPY/TWD)</p>
-                        <p class="font-bold text-lg text-[var(--jp-indigo)]">¥${avgJPY.toFixed(0)}</p>
-                        <p class="text-xs text-stone-400">$${avgTWD.toFixed(0)}</p>
-                    </div>
-                </div>
-                <div class="space-y-2">
-                    <div class="flex justify-between items-center p-3 border-b text-sm">
-                        <span>💖 Ruby 已付</span>
-                        <div class="text-right">
-                            <span class="font-bold block">¥${rubyPaidJPY}</span>
-                            <span class="text-[10px] text-stone-400">($${rubyPaidTWD})</span>
-                        </div>
-                    </div>
-                    <div class="flex justify-between items-center p-3 border-b text-sm">
-                        <span>💎 Wen 已付</span>
-                        <div class="text-right">
-                            <span class="font-bold block">¥${wenPaidJPY}</span>
-                            <span class="text-[10px] text-stone-400">($${wenPaidTWD})</span>
-                        </div>
+                        <p class="text-[10px] text-stone-500 font-bold uppercase">Wen 已付</p>
+                        <p class="font-bold text-lg text-[var(--jp-indigo)]">¥${wenPaidJPY}</p>
+                        <p class="text-xs text-stone-400">$${wenPaidTWD}</p>
                     </div>
                 </div>
                 <div class="mt-4">${resultHtml}</div>
             `;
         }
+
+        window.exportToText = () => {
+            const exps = travelData.expenses || [];
+            if (exps.length === 0) return alert("目前沒有帳單紀錄喔！");
+            let rubyPaidTWD = 0, wenPaidTWD = 0, rubyShouldTWD = 0, wenShouldTWD = 0, details = "";
+            exps.forEach(e => {
+                if(e.payer === 'Ruby') rubyPaidTWD += e.amtTWD; else wenPaidTWD += e.amtTWD;
+                const targets = e.splitWith || ['Ruby', 'Wen'];
+                const shareTWD = e.amtTWD / targets.length;
+                if(targets.includes('Ruby')) rubyShouldTWD += shareTWD;
+                if(targets.includes('Wen')) wenShouldTWD += shareTWD;
+                details += `• ${e.name}: $${e.amtTWD} (${e.payer}付/算${targets.join('&')})\n`;
+            });
+            const balance = Math.round(rubyPaidTWD - rubyShouldTWD);
+            const summary = balance > 0 ? `✅ Wen 應付給 Ruby：$${Math.abs(balance)}` : balance < 0 ? `✅ Ruby 應付給 Wen：$${Math.abs(balance)}` : `✅ 雙方平分！`;
+            const msg = `🧸 旅費結算報告\n---\n${details}---\n${summary}\n(匯率: ${travelData.rate})`;
+            navigator.clipboard.writeText(msg).then(() => alert("報告已複製到剪貼簿！"));
+        };
+
+        window.clearAllExpenses = () => {
+            if (confirm("⚠️ 確定要刪除所有帳單嗎？此動作無法復原！")) {
+                if (prompt("請輸入 'delete' 以確認：") === 'delete') {
+                    travelData.expenses = [];
+                    pushToCloud();
+                }
+            }
+        };
 
         window.switchPage = (p) => {
             document.getElementById('itinerary-page').classList.toggle('hidden', p !== 'itinerary');

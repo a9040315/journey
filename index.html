@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🧸 大手牽小手旅行 (幣別切換版) ✈️💖</title>
+    <title>🧸 大手牽小手旅行 (全功能最終版) ✈️💖</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script type="importmap">
     {
@@ -22,9 +22,11 @@
         .header-cell { background-color: var(--jp-indigo); color: white; padding: 12px; position: sticky; top: 0; z-index: 10; font-size: 0.85rem; }
         .tab-btn { padding: 12px 24px; font-weight: 600; cursor: pointer; transition: 0.3s; border-bottom: 3px solid transparent; }
         .active-tab { color: var(--jp-indigo); border-bottom: 3px solid var(--jp-indigo); }
-        .map-btn { display: inline-block; padding: 4px 8px; border-radius: 4px; background-color: #4285F4; color: white; font-size: 0.7rem; font-weight: bold; }
-        .map-empty { color: #9ca3af; font-size: 0.7rem; text-decoration: dashed underline; }
-        .url-input { font-size: 10px; color: #9ca3af; overflow: hidden; white-space: nowrap; max-width: 100px; text-overflow: ellipsis; }
+        .editable-field { border-bottom: 1px dashed transparent; transition: 0.2s; padding: 0 2px; border-radius: 2px; }
+        .editable-field:hover { border-bottom-color: #cbd5e1; background-color: #f8fafc; cursor: edit; }
+        .editable-field:focus { outline: none; border-bottom-color: var(--jp-indigo); background-color: #fff; }
+        .method-toggle { cursor: pointer; transition: transform 0.2s; display: inline-block; }
+        .method-toggle:active { transform: scale(1.3); }
     </style>
 </head>
 <body class="p-2 sm:p-8">
@@ -33,7 +35,6 @@
             <h1 class="text-2xl sm:text-3xl font-bold serif-font tracking-widest">🧸 大手牽小手旅行 ✈️💖</h1>
             <div class="flex flex-col sm:flex-row justify-between items-center mt-4 gap-2">
                 <span id="syncStatus" class="text-xs bg-white/20 px-3 py-1 rounded-full text-red-200 text-center">🔴 嘗試連線雲端...</span>
-                <span class="text-[10px] opacity-70 font-mono">ID: journey-b926c</span>
             </div>
         </header>
 
@@ -49,14 +50,13 @@
                     匯率: 1 JPY = <input type="number" id="rateInput" step="0.001" class="w-16 border-b border-stone-400 text-center inline-block" onchange="updateRate(this.value)"> TWD
                 </div>
             </div>
-
             <div class="overflow-x-auto rounded-lg border border-stone-200 shadow-sm">
                 <table class="w-full text-left border-collapse min-w-[850px]">
                     <thead>
                         <tr>
                             <th class="header-cell w-24 text-center">時間</th>                         
-                            <th class="header-cell w-40">地點名稱</th>
-                            <th class="header-cell w-32">交通方式</th>
+                            <th class="header-cell w-40">方式</th>
+                            <th class="header-cell w-32">地點名稱</th>
                             <th class="header-cell w-32">Google Map</th>
                             <th class="header-cell w-28 text-right">預算 (JPY)</th>
                             <th class="header-cell">隨手備註</th>
@@ -72,54 +72,50 @@
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div class="bg-stone-50 p-6 rounded-xl border border-stone-200">
                     <h2 class="text-xl font-bold mb-4 serif-font text-[var(--jp-indigo)]">💸 新增支出</h2>
-                    <div class="space-y-4">
-                        <input type="text" id="expName" placeholder="項目名稱 (例如: 一蘭拉麵)" class="w-full p-2 border rounded bg-white outline-none">
-                        
+                    <div class="space-y-4 mb-8">
+                        <input type="text" id="expName" placeholder="項目名稱" class="w-full p-2 border rounded bg-white outline-none">
                         <div class="grid grid-cols-3 gap-2">
-                            <select id="expCurrency" class="p-2 border rounded bg-white font-bold outline-none border-stone-300 text-sm">
+                            <select id="expCurrency" class="p-2 border rounded bg-white font-bold text-sm">
                                 <option value="JPY">日圓 ¥</option>
                                 <option value="TWD">台幣 $</option>
                             </select>
                             <input type="number" id="expAmount" placeholder="金額" class="col-span-2 p-2 border rounded bg-white outline-none">
                         </div>
-
-                        <select id="expPayer" class="w-full p-2 border rounded bg-white font-bold outline-none">
+                        <select id="expPayer" class="w-full p-2 border rounded bg-white font-bold">
                             <option value="Ruby">Ruby 付款</option>
                             <option value="Wen">Wen 付款</option>
                         </select>
-
-                        <div class="bg-white p-3 rounded border border-stone-200">
-                            <p class="text-[10px] font-bold text-stone-500 mb-2 uppercase tracking-widest">分帳對象 (誰出錢？)</p>
-                            <div class="flex gap-4">
-                                <label class="flex items-center gap-2 cursor-pointer">
-                                    <input type="checkbox" id="splitRuby" checked class="w-4 h-4 accent-[var(--jp-indigo)]"> <span class="text-sm">Ruby</span>
-                                </label>
-                                <label class="flex items-center gap-2 cursor-pointer">
-                                    <input type="checkbox" id="splitWen" checked class="w-4 h-4 accent-[var(--jp-indigo)]"> <span class="text-sm">Wen</span>
-                                </label>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div class="bg-white p-2 rounded border border-stone-200">
+                                <p class="text-[10px] font-bold text-stone-500 mb-1 uppercase tracking-widest">支付方式</p>
+                                <div class="flex gap-2">
+                                    <label class="text-xs flex items-center gap-1 cursor-pointer"><input type="radio" name="payMethod" value="cash" checked> 💵 現金</label>
+                                    <label class="text-xs flex items-center gap-1 cursor-pointer"><input type="radio" name="payMethod" value="card"> 💳 刷卡</label>
+                                </div>
+                            </div>
+                            <div class="bg-white p-2 rounded border border-stone-200">
+                                <p class="text-[10px] font-bold text-stone-500 mb-1 uppercase tracking-widest">分帳對象</p>
+                                <div class="flex gap-2">
+                                    <label class="text-xs flex items-center gap-1 cursor-pointer"><input type="checkbox" id="splitRuby" checked> R</label>
+                                    <label class="text-xs flex items-center gap-1 cursor-pointer"><input type="checkbox" id="splitWen" checked> W</label>
+                                </div>
                             </div>
                         </div>
-                        
-                        <button onclick="addExpense()" class="w-full bg-[var(--jp-bamboo)] text-white py-2 rounded-lg font-bold hover:opacity-90 shadow-md">加入帳單</button>
+                        <button onclick="addExpense()" class="w-full bg-[var(--jp-bamboo)] text-white py-2 rounded-lg font-bold shadow-md hover:opacity-90 transition">加入帳單</button>
                     </div>
-                    <div class="mt-8">
-                        <h3 class="font-bold mb-2 border-b pb-1 text-sm text-stone-500 text-center uppercase tracking-widest">支出明細</h3>
-                        <div id="expenseHistory" class="text-sm space-y-2 max-h-64 overflow-y-auto"></div>
-                    </div>
+
+                    <h3 class="font-bold mb-2 border-b pb-1 text-[10px] text-stone-400 text-center uppercase tracking-widest">支出明細 (點擊圖示/名稱/金額可編輯)</h3>
+                    <div id="expenseHistory" class="text-sm space-y-2 max-h-96 overflow-y-auto"></div>
                 </div>
-                <div class="bg-white p-6 rounded-xl border-2 border-[var(--jp-indigo)] shadow-lg flex flex-col justify-between">
+
+                <div class="bg-white p-6 rounded-xl border-2 border-[var(--jp-indigo)] shadow-lg flex flex-col justify-between h-fit">
                     <div>
-                        <h2 class="text-xl font-bold mb-4 serif-font text-[var(--jp-indigo)]">📊 結算報告</h2>
+                        <h2 class="text-xl font-bold mb-4 serif-font text-[var(--jp-indigo)]">📊 結算與統計</h2>
                         <div id="settlementReport" class="space-y-6"></div>
                     </div>
-                    
                     <div class="mt-8 space-y-3">
-                        <button onclick="exportToText()" class="w-full bg-sky-600 text-white py-3 rounded-lg font-bold hover:bg-sky-700 transition shadow-md flex items-center justify-center gap-2">
-                            💬 複製文字報告 (LINE)
-                        </button>
-                        <button onclick="clearAllExpenses()" class="w-full bg-red-50 text-red-500 py-2 rounded-lg text-sm font-medium hover:bg-red-100 transition border border-red-100">
-                            🗑️ 清空所有帳單
-                        </button>
+                        <button onclick="exportToText()" class="w-full bg-sky-600 text-white py-3 rounded-lg font-bold hover:bg-sky-700 shadow-md">💬 複製 LINE 圖表報告</button>
+                        <button onclick="clearAllExpenses()" class="w-full bg-red-50 text-red-500 py-2 rounded-lg text-sm font-medium border border-red-100">🗑️ 清空所有帳單</button>
                     </div>
                 </div>
             </div>
@@ -143,7 +139,6 @@
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
         const travelRef = ref(db, 'trips/journey_data');
-
         let travelData = { itinerary: [], expenses: [], rate: 0.22 };
 
         onValue(travelRef, (snapshot) => {
@@ -153,71 +148,34 @@
                 if(!travelData.itinerary) travelData.itinerary = [];
                 if(!travelData.expenses) travelData.expenses = [];
                 document.getElementById('syncStatus').innerHTML = "🟢 雲端同步中";
-                document.getElementById('syncStatus').classList.replace('text-red-200', 'text-green-300');
                 renderTable();
                 renderExpenses();
             }
         });
 
-        function pushToCloud() {
-            set(travelRef, travelData);
-        }
+        function pushToCloud() { set(travelRef, travelData); }
 
-        // --- 行程功能 ---
-        window.addRow = () => {
-            travelData.itinerary.push({ 
-                time: "09:00", 
-                trans: "🚶 步行", 
-                location: "新的景點", 
-                mapUrl: "", 
-                amount: 0, 
-                notes: "" 
-            });
-            pushToCloud();
-        };
-
-        window.updateCell = (idx, field, val) => {
-            travelData.itinerary[idx][field] = field === 'amount' ? parseFloat(val) || 0 : val;
-            pushToCloud();
-        };
-
-        window.deleteRow = (idx) => {
-            if(confirm("確定刪除此行程嗎？")) {
-                travelData.itinerary.splice(idx, 1);
-                pushToCloud();
-            }
-        };
+        // --- 行程與匯率 ---
+        window.addRow = () => { travelData.itinerary.push({ time: "09:00", trans: "🚶 步行", location: "新的景點", mapUrl: "", amount: 0, notes: "" }); pushToCloud(); };
+        window.updateCell = (idx, field, val) => { travelData.itinerary[idx][field] = field === 'amount' ? parseFloat(val) || 0 : val; pushToCloud(); };
+        window.deleteRow = (idx) => { if(confirm("確定刪除？")) { travelData.itinerary.splice(idx, 1); pushToCloud(); } };
+        window.updateRate = (v) => { travelData.rate = parseFloat(v); pushToCloud(); };
 
         function renderTable() {
             const tbody = document.getElementById('itineraryBody');
-            tbody.innerHTML = (travelData.itinerary || []).map((item, i) => {
-                const hasUrl = item.mapUrl && item.mapUrl.startsWith('http');
-                return `
-                <tr class="hover:bg-stone-50 transition border-b border-stone-100">
-                    <td class="table-cell"><input type="time" value="${item.time}" onchange="updateCell(${i}, 'time', this.value)" class="text-xs font-bold text-center bg-transparent"></td>
-                    <td class="table-cell" contenteditable="true" onblur="updateCell(${i}, 'trans', this.innerText)">${item.trans || ''}</td>
+            tbody.innerHTML = (travelData.itinerary || []).map((item, i) => `
+                <tr class="hover:bg-stone-50 border-b border-stone-100">
+                    <td class="table-cell"><input type="time" value="${item.time}" onchange="updateCell(${i}, 'time', this.value)" class="bg-transparent text-xs"></td>
+                    <td class="table-cell" contenteditable="true" onblur="updateCell(${i}, 'trans', this.innerText)">${item.trans}</td>
                     <td class="table-cell font-medium" contenteditable="true" onblur="updateCell(${i}, 'location', this.innerText)">${item.location}</td>
-                    <td class="table-cell">
-                        <div class="flex flex-col gap-1">
-                            ${hasUrl ? `<a href="${item.mapUrl}" target="_blank" class="map-btn text-center">📍 開啟地圖</a>` : ''}
-                            <div contenteditable="true" 
-                                 class="url-input ${!hasUrl ? 'map-empty' : ''}" 
-                                 onblur="updateCell(${i}, 'mapUrl', this.innerText.trim())">
-                                 ${item.mapUrl || '🔗 貼上連結'}
-                            </div>
-                        </div>
-                    </td>
-                    <td class="table-cell text-right font-bold text-[var(--jp-indigo)]">
-                        <input type="number" value="${item.amount}" class="text-right bg-transparent w-full" onblur="updateCell(${i}, 'amount', this.value)">
-                    </td>
-                    <td class="table-cell text-xs text-stone-500" contenteditable="true" onblur="updateCell(${i}, 'notes', this.innerText)">${item.notes || '點擊編輯...'}</td>
-                    <td class="table-cell text-center"><button onclick="deleteRow(${i})" class="text-stone-300 hover:text-red-500 transition">✕</button></td>
+                    <td class="table-cell"><div contenteditable="true" class="url-input" onblur="updateCell(${i}, 'mapUrl', this.innerText.trim())">${item.mapUrl || '🔗'}</div></td>
+                    <td class="table-cell text-right font-bold"><input type="number" value="${item.amount}" class="text-right bg-transparent w-full" onblur="updateCell(${i}, 'amount', this.value)"></td>
+                    <td class="table-cell text-xs" contenteditable="true" onblur="updateCell(${i}, 'notes', this.innerText)">${item.notes}</td>
+                    <td class="table-cell text-center"><button onclick="deleteRow(${i})">✕</button></td>
                 </tr>
-            `}).join('');
-            document.getElementById('rateInput').value = travelData.rate || 0.22;
+            `).join('');
+            document.getElementById('rateInput').value = travelData.rate;
         }
-
-        window.updateRate = (v) => { travelData.rate = parseFloat(v); pushToCloud(); };
 
         // --- 分帳功能 ---
         window.addExpense = () => {
@@ -225,150 +183,176 @@
             const amtRaw = parseFloat(document.getElementById('expAmount').value);
             const currency = document.getElementById('expCurrency').value;
             const payer = document.getElementById('expPayer').value;
-            const rate = travelData.rate || 0.22;
-            
+            const payMethod = document.querySelector('input[name="payMethod"]:checked').value;
             const splitWith = [];
             if(document.getElementById('splitRuby').checked) splitWith.push('Ruby');
             if(document.getElementById('splitWen').checked) splitWith.push('Wen');
+            if(!name || !amtRaw) return alert("請輸入名稱與金額");
 
-            if(!name || !amtRaw) return alert("請輸入項目與金額");
-            if(splitWith.length === 0) return alert("請至少勾選一位分帳人員");
+            let amtJPY = currency === 'JPY' ? amtRaw : Math.round(amtRaw / travelData.rate);
+            let amtTWD = currency === 'TWD' ? amtRaw : Math.round(amtRaw * travelData.rate);
 
-            let amtJPY, amtTWD;
-            if (currency === 'JPY') {
-                amtJPY = amtRaw;
-                amtTWD = Math.round(amtRaw * rate);
-            } else {
-                amtTWD = amtRaw;
-                amtJPY = Math.round(amtRaw / rate);
-            }
-
-            travelData.expenses.push({ 
-                id: Date.now(), 
-                name, 
-                amt: amtJPY, 
-                amtTWD: amtTWD,
-                originalCurrency: currency,
-                originalAmt: amtRaw,
-                payer,
-                splitWith
-            });
-
+            travelData.expenses.push({ id: Date.now(), name, amt: amtJPY, amtTWD, payer, payMethod, splitWith });
             document.getElementById('expName').value = '';
             document.getElementById('expAmount').value = '';
             pushToCloud();
         };
 
-        window.deleteExpense = (id) => {
-            travelData.expenses = travelData.expenses.filter(e => e.id !== id);
-            pushToCloud();
+        window.updateExpenseName = (id, newText) => {
+            const index = travelData.expenses.findIndex(e => e.id === id);
+            if (index !== -1 && travelData.expenses[index].name !== newText.trim()) {
+                travelData.expenses[index].name = newText.trim();
+                pushToCloud();
+            }
         };
+
+        window.togglePayMethod = (id) => {
+            const index = travelData.expenses.findIndex(e => e.id === id);
+            if (index !== -1) {
+                travelData.expenses[index].payMethod = travelData.expenses[index].payMethod === 'cash' ? 'card' : 'cash';
+                pushToCloud();
+            }
+        };
+
+        window.updateExpenseAmount = (id, newAmtJPY) => {
+            const index = travelData.expenses.findIndex(e => e.id === id);
+            const amt = parseFloat(newAmtJPY.replace(/[^\d.-]/g, ''));
+            if (index !== -1 && !isNaN(amt)) {
+                if (travelData.expenses[index].amt !== amt) {
+                    travelData.expenses[index].amt = amt;
+                    travelData.expenses[index].amtTWD = Math.round(amt * travelData.rate);
+                    pushToCloud();
+                }
+            } else { renderExpenses(); }
+        };
+
+        window.deleteExpense = (id) => { travelData.expenses = travelData.expenses.filter(e => e.id !== id); pushToCloud(); };
 
         function renderExpenses() {
             const historyDiv = document.getElementById('expenseHistory');
-            const reportDiv = document.getElementById('settlementReport');
             const exps = travelData.expenses || [];
             
-            historyDiv.innerHTML = exps.map(e => `
+            historyDiv.innerHTML = exps.map(e => {
+                const icon = e.payMethod === 'card' ? '💳' : '💵';
+                return `
                 <div class="flex justify-between items-center bg-white p-2 rounded shadow-sm border border-stone-100">
-                    <div class="flex flex-col">
-                        <span class="font-bold text-stone-700">${e.name}</span>
-                        <span class="text-[10px] text-stone-400">由 ${e.payer} 付 / 算 ${e.splitWith ? e.splitWith.join('&') : '兩人'} 的</span>
+                    <div class="flex flex-col flex-1">
+                        <div class="flex items-center gap-1">
+                            <span onclick="togglePayMethod(${e.id})" class="method-toggle">${icon}</span>
+                            <span contenteditable="true" onblur="updateExpenseName(${e.id}, this.innerText)" class="font-bold text-stone-700 editable-field">${e.name}</span>
+                        </div>
+                        <span class="text-[10px] text-stone-400 px-1">由 ${e.payer} 付 / 算 ${e.splitWith.join('&')}</span>
                     </div>
                     <div class="flex items-center gap-2 font-mono">
                         <div class="text-right">
-                            <span class="block font-bold text-[var(--jp-indigo)]">¥${e.amt}</span>
+                            <div class="flex items-center justify-end font-bold text-[var(--jp-indigo)]">
+                                <span>¥</span>
+                                <span contenteditable="true" onblur="updateExpenseAmount(${e.id}, this.innerText)" class="editable-field">${e.amt}</span>
+                            </div>
                             <span class="block text-[10px] text-stone-400">≈ $${e.amtTWD}</span>
                         </div>
-                        <button onclick="deleteExpense(${e.id})" class="text-stone-300 hover:text-red-500 font-sans ml-2">✕</button>
+                        <button onclick="deleteExpense(${e.id})" class="text-stone-300 hover:text-red-500 ml-2">✕</button>
                     </div>
                 </div>
-            `).reverse().join('') || '<p class="text-stone-400 italic text-center">尚未有支出紀錄</p>';
+            `}).reverse().join('') || '<p class="text-stone-400 italic text-center">尚未有支出紀錄</p>';
 
-            let rubyPaidTWD = 0, wenPaidTWD = 0;
-            let rubyShouldOweTWD = 0, wenShouldOweTWD = 0;
-            let rubyPaidJPY = 0, wenPaidJPY = 0;
-            let rubyShouldOweJPY = 0, wenShouldOweJPY = 0;
+            // 統計計算
+            let rubyPaidTWD = 0, wenPaidTWD = 0, rubyShouldTWD = 0, wenShouldTWD = 0;
+            let rubyPaidJPY = 0, wenPaidJPY = 0, totalCashJPY = 0, totalCashTWD = 0, totalCardJPY = 0, totalCardTWD = 0;
 
-            exps.forEach(e => { 
+            exps.forEach(e => {
                 if(e.payer === 'Ruby') { rubyPaidJPY += e.amt; rubyPaidTWD += e.amtTWD; }
                 else { wenPaidJPY += e.amt; wenPaidTWD += e.amtTWD; }
 
-                const targets = e.splitWith || ['Ruby', 'Wen'];
-                const shareJPY = e.amt / targets.length;
-                const shareTWD = e.amtTWD / targets.length;
-                if(targets.includes('Ruby')) { rubyShouldOweJPY += shareJPY; rubyShouldOweTWD += shareTWD; }
-                if(targets.includes('Wen')) { wenShouldOweJPY += shareJPY; wenShouldOweTWD += shareTWD; }
+                const shareJPY = e.amt / e.splitWith.length;
+                const shareTWD = e.amtTWD / e.splitWith.length;
+                if(e.splitWith.includes('Ruby')) rubyShouldTWD += shareTWD;
+                if(e.splitWith.includes('Wen')) wenShouldTWD += shareTWD;
+
+                if(e.payMethod === 'cash') { totalCashJPY += e.amt; totalCashTWD += e.amtTWD; }
+                else { totalCardJPY += e.amt; totalCardTWD += e.amtTWD; }
             });
 
-            const rubyBalanceJPY = rubyPaidJPY - rubyShouldOweJPY;
-            const rubyBalanceTWD = rubyPaidTWD - rubyShouldOweTWD;
-
+            const rubyBalJPY = rubyPaidJPY - (exps.reduce((acc, e) => acc + (e.splitWith.includes('Ruby') ? e.amt/e.splitWith.length : 0), 0));
+            const rubyBalTWD = rubyPaidTWD - rubyShouldTWD;
+            const reportDiv = document.getElementById('settlementReport');
+            
             let resultHtml = "";
-            if (exps.length === 0) {
-                resultHtml = `<div class="p-4 bg-stone-50 rounded text-stone-400 text-center text-sm italic">請開始記錄旅途開銷</div>`;
-            } else if (rubyBalanceJPY > 0) {
-                resultHtml = `
-                    <div class="p-4 bg-orange-50 border border-orange-200 rounded text-orange-800 text-center shadow-inner">
-                        <strong class="text-sm">Wen 應支付給 Ruby</strong><br>
-                        <span class="text-3xl font-black">¥${Math.abs(rubyBalanceJPY).toFixed(0)}</span><br>
-                        <span class="text-md font-bold opacity-80">或是約 NT$ ${Math.abs(rubyBalanceTWD).toFixed(0)}</span>
-                    </div>`;
-            } else if (rubyBalanceJPY < 0) {
-                resultHtml = `
-                    <div class="p-4 bg-green-50 border border-green-200 rounded text-green-800 text-center shadow-inner">
-                        <strong class="text-sm">Ruby 應支付給 Wen</strong><br>
-                        <span class="text-3xl font-black">¥${Math.abs(rubyBalanceJPY).toFixed(0)}</span><br>
-                        <span class="text-md font-bold opacity-80">或是約 NT$ ${Math.abs(rubyBalanceTWD).toFixed(0)}</span>
-                    </div>`;
-            } else {
-                resultHtml = `<div class="p-4 bg-blue-50 border border-blue-200 rounded text-blue-800 text-center font-bold">兩邊目前平分！</div>`;
+            if (rubyBalTWD > 0.5) {
+                resultHtml = `<div class="p-4 bg-orange-50 border border-orange-200 rounded text-orange-800 text-center shadow-inner"><strong class="text-sm">Wen 應付給 Ruby</strong><br><span class="text-3xl font-black">NT$ ${Math.abs(rubyBalTWD).toFixed(0)}</span></div>`;
+            } else if (rubyBalTWD < -0.5) {
+                resultHtml = `<div class="p-4 bg-green-50 border border-green-200 rounded text-green-800 text-center shadow-inner"><strong class="text-sm">Ruby 應付給 Wen</strong><br><span class="text-3xl font-black">NT$ ${Math.abs(rubyBalTWD).toFixed(0)}</span></div>`;
+            } else if (exps.length > 0) {
+                resultHtml = `<div class="p-4 bg-blue-50 text-center rounded font-bold border border-blue-100">兩邊目前平分！</div>`;
             }
 
             reportDiv.innerHTML = `
                 <div class="grid grid-cols-2 gap-4">
-                    <div class="p-3 bg-stone-100 rounded text-center">
-                        <p class="text-[10px] text-stone-500 font-bold uppercase">Ruby 已付</p>
-                        <p class="font-bold text-lg text-[var(--jp-indigo)]">¥${rubyPaidJPY}</p>
-                        <p class="text-xs text-stone-400">$${rubyPaidTWD}</p>
+                    <div class="p-2 bg-stone-100 rounded text-center"><p class="text-[10px] text-stone-500 uppercase font-bold">Ruby 已墊付</p><p class="font-bold text-lg">$${Math.round(rubyPaidTWD)}</p></div>
+                    <div class="p-2 bg-stone-100 rounded text-center"><p class="text-[10px] text-stone-500 uppercase font-bold">Wen 已墊付</p><p class="font-bold text-lg">$${Math.round(wenPaidTWD)}</p></div>
+                </div>
+                <div class="space-y-2 py-2">
+                    <div class="flex justify-between items-center text-sm px-2 py-1 bg-stone-50 rounded border-l-4 border-emerald-500">
+                        <span class="text-stone-500">💵 現金總計</span>
+                        <span class="font-bold text-emerald-700">¥${totalCashJPY} <span class="text-[10px] font-normal">($${totalCashTWD})</span></span>
                     </div>
-                    <div class="p-3 bg-stone-100 rounded text-center">
-                        <p class="text-[10px] text-stone-500 font-bold uppercase">Wen 已付</p>
-                        <p class="font-bold text-lg text-[var(--jp-indigo)]">¥${wenPaidJPY}</p>
-                        <p class="text-xs text-stone-400">$${wenPaidTWD}</p>
+                    <div class="flex justify-between items-center text-sm px-2 py-1 bg-stone-50 rounded border-l-4 border-sky-500">
+                        <span class="text-stone-500">💳 刷卡總計</span>
+                        <span class="font-bold text-sky-700">¥${totalCardJPY} <span class="text-[10px] font-normal">($${totalCardTWD})</span></span>
                     </div>
                 </div>
-                <div class="mt-4">${resultHtml}</div>
+                ${resultHtml}
             `;
         }
 
+        // --- LINE 導出功能 ---
         window.exportToText = () => {
             const exps = travelData.expenses || [];
-            if (exps.length === 0) return alert("目前沒有帳單紀錄喔！");
-            let rubyPaidTWD = 0, wenPaidTWD = 0, rubyShouldTWD = 0, wenShouldTWD = 0, details = "";
+            if (exps.length === 0) return alert("目前沒有帳單！");
+
+            let rubyPaidTWD = 0, wenPaidTWD = 0, rubyShouldTWD = 0, wenShouldTWD = 0;
+            let cashJPY = 0, cardJPY = 0, details = "";
+
             exps.forEach(e => {
-                if(e.payer === 'Ruby') rubyPaidTWD += e.amtTWD; else wenPaidTWD += e.amtTWD;
-                const targets = e.splitWith || ['Ruby', 'Wen'];
-                const shareTWD = e.amtTWD / targets.length;
-                if(targets.includes('Ruby')) rubyShouldTWD += shareTWD;
-                if(targets.includes('Wen')) wenShouldTWD += shareTWD;
-                details += `• ${e.name}: $${e.amtTWD} (${e.payer}付/算${targets.join('&')})\n`;
+                const icon = e.payMethod === 'card' ? '💳' : '💵';
+                const splitTag = e.splitWith.length === 2 ? ' (平分)' : ''; 
+                if(e.payer === 'Ruby') rubyPaidTWD += e.amtTWD;
+                else wenPaidTWD += e.amtTWD;
+
+                const shareTWD = e.amtTWD / e.splitWith.length;
+                if(e.splitWith.includes('Ruby')) rubyShouldTWD += shareTWD;
+                if(e.splitWith.includes('Wen')) wenShouldTWD += shareTWD;
+
+                if(e.payMethod === 'cash') cashJPY += e.amt;
+                else cardJPY += e.amt;
+
+                details += `${icon} ${e.name}${splitTag}\n   └ ${e.payer}付 ¥${e.amt} ($${e.amtTWD})\n`;
             });
+
             const balance = Math.round(rubyPaidTWD - rubyShouldTWD);
-            const summary = balance > 0 ? `✅ Wen 應付給 Ruby：$${Math.abs(balance)}` : balance < 0 ? `✅ Ruby 應付給 Wen：$${Math.abs(balance)}` : `✅ 雙方平分！`;
-            const msg = `🧸 旅費結算報告\n---\n${details}---\n${summary}\n(匯率: ${travelData.rate})`;
-            navigator.clipboard.writeText(msg).then(() => alert("報告已複製到剪貼簿！"));
+            let resultText = balance > 0 ? `✨ Wen 應補給 Ruby：$${Math.abs(balance)} TWD` : 
+                             balance < 0 ? `✨ Ruby 應補給 Wen：$${Math.abs(balance)} TWD` : `✅ 雙方平分！`;
+
+            const reportMsg = 
+`┏━━━ 🧸 旅費分帳報表 ━━━┓
+  📅 日期：${new Date().toLocaleDateString()}
+  💵 現金總計：¥${cashJPY}
+  💳 刷卡總計：¥${cardJPY}
+
+  --- 💰 墊款總額 ---
+  🙋 Ruby 共墊：$${Math.round(rubyPaidTWD)} TWD
+  🙋 Wen  共墊：$${Math.round(wenPaidTWD)} TWD
+
+  --- 📜 支出明細 ---
+${details}
+  --- 📊 最終結算 ---
+  ${resultText}
+┗━━━━━━━━━━━━━━━━┛`;
+
+            navigator.clipboard.writeText(reportMsg).then(() => alert("詳細圖表報告已複製！"));
         };
 
-        window.clearAllExpenses = () => {
-            if (confirm("⚠️ 確定要刪除所有帳單嗎？此動作無法復原！")) {
-                if (prompt("請輸入 'delete' 以確認：") === 'delete') {
-                    travelData.expenses = [];
-                    pushToCloud();
-                }
-            }
-        };
-
+        window.clearAllExpenses = () => { if(confirm("清空？") && prompt("輸入 delete") === 'delete') { travelData.expenses = []; pushToCloud(); } };
         window.switchPage = (p) => {
             document.getElementById('itinerary-page').classList.toggle('hidden', p !== 'itinerary');
             document.getElementById('split-page').classList.toggle('hidden', p !== 'split');

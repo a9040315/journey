@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🧸 大手牽小手旅行 (專業統計版) ✈️💖</title>
+    <title>🧸 大手牽小手旅行 (帳務中心版) ✈️💖</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script type="importmap">
     {
@@ -32,7 +32,6 @@
             <h1 class="text-2xl sm:text-3xl font-bold serif-font tracking-widest">🧸 大手牽小手旅行 ✈️💖</h1>
             <div class="flex flex-col sm:flex-row justify-between items-center mt-4 gap-2">
                 <span id="syncStatus" class="text-xs bg-white/20 px-3 py-1 rounded-full text-red-200">🔴 嘗試連線雲端...</span>
-                <span class="text-[10px] opacity-70 font-mono">ID: journey-b926c</span>
             </div>
         </header>
 
@@ -73,7 +72,7 @@
                     <div class="space-y-4">
                         <div class="grid grid-cols-2 gap-2">
                             <input type="date" id="expDateInput" class="p-2 border rounded bg-white text-sm">
-                            <input type="text" id="expName" placeholder="項目名稱 (例如: 炸牛排)" class="p-2 border rounded bg-white">
+                            <input type="text" id="expName" placeholder="項目名稱" class="p-2 border rounded bg-white">
                         </div>
                         
                         <div class="grid grid-cols-3 gap-2">
@@ -114,7 +113,7 @@
                 </div>
 
                 <div class="bg-white p-6 rounded-xl border-2 border-[var(--jp-indigo)] shadow-lg">
-                    <h2 class="text-xl font-bold mb-4 serif-font text-[var(--jp-indigo)]">📊 結算與統計看板</h2>
+                    <h2 class="text-xl font-bold mb-4 serif-font text-[var(--jp-indigo)]">📊 墊款與結算統計</h2>
                     <div id="settlementReport" class="space-y-6"></div>
                     
                     <div class="mt-8 space-y-3">
@@ -145,8 +144,6 @@
         const travelRef = ref(db, 'trips/journey_data');
 
         let travelData = { itinerary: [], expenses: [], rate: 0.22 };
-
-        // 設定預設日期為今天
         document.getElementById('expDateInput').valueAsDate = new Date();
 
         onValue(travelRef, (snapshot) => {
@@ -156,7 +153,6 @@
                 if(!travelData.itinerary) travelData.itinerary = [];
                 if(!travelData.expenses) travelData.expenses = [];
                 document.getElementById('syncStatus').innerHTML = "🟢 雲端同步中";
-                document.getElementById('syncStatus').classList.replace('text-red-200', 'text-green-300');
                 renderTable();
                 renderExpenses();
             }
@@ -168,10 +164,12 @@
             travelData.itinerary.push({ time: "09:00", trans: "🚶 步行", location: "新的景點", mapUrl: "", amount: 0, notes: "" });
             pushToCloud();
         };
+
         window.updateCell = (idx, field, val) => {
             travelData.itinerary[idx][field] = field === 'amount' ? parseFloat(val) || 0 : val;
             pushToCloud();
         };
+
         window.deleteRow = (idx) => { if(confirm("確定刪除？")) { travelData.itinerary.splice(idx, 1); pushToCloud(); } };
         window.updateRate = (v) => { travelData.rate = parseFloat(v); pushToCloud(); };
 
@@ -202,7 +200,7 @@
             if(document.getElementById('splitRuby').checked) splitWith.push('Ruby');
             if(document.getElementById('splitWen').checked) splitWith.push('Wen');
             
-            if(!name || !amtRaw || !date) return alert("請輸入日期、名稱與金額");
+            if(!name || !amtRaw || !date) return alert("請輸入完整資訊");
 
             let amtJPY = currency === 'JPY' ? amtRaw : Math.round(amtRaw / rate);
             let amtTWD = currency === 'TWD' ? amtRaw : Math.round(amtRaw * rate);
@@ -238,8 +236,8 @@
             const historyDiv = document.getElementById('expenseHistory');
             const reportDiv = document.getElementById('settlementReport');
             const exps = travelData.expenses || [];
-            const rate = travelData.rate || 0.22;
 
+            // 渲染明細
             historyDiv.innerHTML = exps.slice().sort((a,b) => new Date(b.date) - new Date(a.date)).map(e => {
                 const sRuby = e.splitWith.includes('Ruby') ? 'checked' : '';
                 const sWen = e.splitWith.includes('Wen') ? 'checked' : '';
@@ -249,125 +247,135 @@
                         <div class="flex flex-col">
                             <input type="date" value="${e.date}" onchange="updateExpField(${e.id}, 'date', this.value)" class="mini-date mb-1 w-24">
                             <div class="flex items-center gap-1">
-                                <select onchange="updateExpField(${e.id}, 'method', this.value)" class="mini-select">
-                                    <option value="JPY_CASH" ${e.method==='JPY_CASH'?'selected':''}>💴</option>
-                                    <option value="TWD_CASH" ${e.method==='TWD_CASH'?'selected':''}>💵</option>
-                                    <option value="CARD" ${e.method==='CARD'?'selected':''}>💳</option>
-                                </select>
+                                <span class="text-[10px] grayscale">${e.method === 'CARD' ? '💳' : '💴'}</span>
                                 <span contenteditable="true" onblur="updateExpField(${e.id}, 'name', this.innerText)" class="editable-item font-bold text-sm">${e.name}</span>
                             </div>
                         </div>
                         <button onclick="deleteExpense(${e.id})" class="text-stone-300">✕</button>
                     </div>
-                    <div class="flex flex-wrap justify-between items-center text-[11px] mt-2 gap-2">
+                    <div class="flex flex-wrap justify-between items-center text-[11px] mt-1">
                         <div class="flex items-center gap-2">
-                            <select onchange="updateExpField(${e.id}, 'payer', this.value)" class="mini-select">
-                                <option value="Ruby" ${e.payer==='Ruby'?'selected':''}>Ruby 付</option>
-                                <option value="Wen" ${e.payer==='Wen'?'selected':''}>Wen 付</option>
-                            </select>
-                            <div class="flex gap-1 items-center bg-stone-50 px-1 rounded">
+                            <span class="${e.payer==='Ruby'?'text-rose-500':'text-blue-500'} font-bold">${e.payer} 付</span>
+                            <div class="flex gap-1 items-center bg-stone-50 px-1 rounded text-stone-400">
                                 <span>分:</span>
                                 <label><input type="checkbox" ${sRuby} onchange="updateExpField(${e.id}, 'splitWith', this)" value="Ruby"> R</label>
                                 <label><input type="checkbox" ${sWen} onchange="updateExpField(${e.id}, 'splitWith', this)" value="Wen"> W</label>
                             </div>
                         </div>
                         <div class="text-right font-mono">
-                            <span class="font-bold text-[var(--jp-indigo)]">¥<span contenteditable="true" onblur="updateExpField(${e.id}, 'amt', this.innerText)">${e.amt}</span></span>
-                            <span class="block text-[9px] text-stone-400">$<span contenteditable="true" onblur="updateExpField(${e.id}, 'amtTWD', this.innerText)">${e.amtTWD}</span></span>
+                            <span class="font-bold">¥${e.amt}</span>
+                            <span class="text-stone-400">($${e.amtTWD})</span>
                         </div>
                     </div>
                 </div>`;
             }).join('') || '<p class="text-center text-stone-400 italic text-sm">目前無支出明細</p>';
 
-            let summary = { jpyTotal: 0, twdTotal: 0, rubyPaidTWD: 0, wenPaidTWD: 0, rubyOweTWD: 0, wenOweTWD: 0, rubyPaidJPY: 0, wenPaidJPY: 0, rubyOweJPY: 0, wenOweJPY: 0 };
+            // 統計邏輯
+            let sum = { 
+                twdTotal: 0, jpyTotal: 0,
+                rubyPaidTWD: 0, wenPaidTWD: 0, // 誰墊了多少錢
+                rubyShareTWD: 0, wenShareTWD: 0, // 誰應該負擔多少錢 (欠帳總額)
+                rubyPaidJPY: 0, wenPaidJPY: 0,
+                rubyShareJPY: 0, wenShareJPY: 0
+            };
             
             exps.forEach(e => {
-                summary.jpyTotal += e.amt;
-                summary.twdTotal += e.amtTWD;
+                sum.twdTotal += e.amtTWD;
+                sum.jpyTotal += e.amt;
                 
-                if(e.payer === 'Ruby') {
-                    summary.rubyPaidTWD += e.amtTWD;
-                    summary.rubyPaidJPY += e.amt;
-                } else {
-                    summary.wenPaidTWD += e.amtTWD;
-                    summary.wenPaidJPY += e.amt;
+                // 計算墊款
+                if(e.payer === 'Ruby') { sum.rubyPaidTWD += e.amtTWD; sum.rubyPaidJPY += e.amt; } 
+                else { sum.wenPaidTWD += e.amtTWD; sum.wenPaidJPY += e.amt; }
+                
+                // 計算每個人應負擔的份額
+                const count = e.splitWith.length;
+                if(count > 0) {
+                    const shareTWD = e.amtTWD / count;
+                    const shareJPY = e.amt / count;
+                    if(e.splitWith.includes('Ruby')) { sum.rubyShareTWD += shareTWD; sum.rubyShareJPY += shareJPY; }
+                    if(e.splitWith.includes('Wen')) { sum.wenShareTWD += shareTWD; sum.wenShareJPY += shareJPY; }
                 }
-                
-                const shareTWD = (e.splitWith.length > 0) ? e.amtTWD / e.splitWith.length : 0;
-                const shareJPY = (e.splitWith.length > 0) ? e.amt / e.splitWith.length : 0;
-                
-                if(e.splitWith.includes('Ruby')) { summary.rubyOweTWD += shareTWD; summary.rubyOweJPY += shareJPY; }
-                if(e.splitWith.includes('Wen')) { summary.wenOweTWD += shareTWD; summary.wenOweJPY += shareJPY; }
             });
 
-            const balanceTWD = summary.rubyPaidTWD - summary.rubyOweTWD;
-            const balanceJPY = summary.rubyPaidJPY - summary.rubyOweJPY;
+            // 結算金額 (墊付 - 應付)
+            // 如果 > 0，代表墊得比應負擔的多 -> 應收
+            // 如果 < 0，代表墊得比應負擔的多 -> 應付
+            const rubyBalanceTWD = sum.rubyPaidTWD - sum.rubyShareTWD;
+            const wenBalanceTWD = sum.wenPaidTWD - sum.wenShareTWD;
+            const rubyBalanceJPY = sum.rubyPaidJPY - sum.rubyShareJPY;
+            const wenBalanceJPY = sum.wenPaidJPY - sum.wenShareJPY;
 
             reportDiv.innerHTML = `
                 <div class="bg-[var(--jp-indigo)] text-white p-4 rounded-xl shadow-inner text-center">
-                    <p class="text-xs opacity-80 mb-1 uppercase tracking-widest">🌍 旅程總花費 (TWD)</p>
-                    <p class="text-3xl font-black">$${Math.round(summary.twdTotal).toLocaleString()}</p>
-                    <p class="text-[10px] opacity-60 mt-1">約相當於 ¥${Math.round(summary.jpyTotal).toLocaleString()}</p>
+                    <p class="text-xs opacity-80 mb-1 uppercase tracking-widest">🌍 旅程總支出 (TWD)</p>
+                    <p class="text-3xl font-black">$${Math.round(sum.twdTotal).toLocaleString()}</p>
+                    <p class="text-[10px] opacity-60 mt-1">累積消費約 ¥${Math.round(sum.jpyTotal).toLocaleString()}</p>
                 </div>
 
                 <div class="grid grid-cols-2 gap-4">
-                    <div class="bg-stone-50 p-3 rounded-lg border border-stone-100">
-                        <p class="text-[10px] font-bold text-stone-500 mb-1 uppercase">👩 Ruby 個人支出</p>
-                        <p class="text-lg font-black text-rose-600">$${Math.round(summary.rubyOweTWD).toLocaleString()}</p>
-                        <p class="text-[10px] text-stone-400">(¥${Math.round(summary.rubyOweJPY).toLocaleString()})</p>
+                    <div class="p-4 rounded-xl border ${rubyBalanceTWD >= 0 ? 'bg-emerald-50 border-emerald-100' : 'bg-rose-50 border-rose-100'}">
+                        <p class="text-xs font-bold text-stone-500 mb-2">👩 Ruby</p>
+                        <div class="mb-3">
+                            <p class="text-[10px] text-stone-400 uppercase">總墊款</p>
+                            <p class="font-bold text-stone-700">$${Math.round(sum.rubyPaidTWD).toLocaleString()}</p>
+                        </div>
+                        <div class="pt-2 border-t border-white/50">
+                            <p class="text-[10px] font-bold ${rubyBalanceTWD >= 0 ? 'text-emerald-600' : 'text-rose-600'}">${rubyBalanceTWD >= 0 ? '💰 目前應收' : '💸 目前應付'}</p>
+                            <p class="text-xl font-black ${rubyBalanceTWD >= 0 ? 'text-emerald-700' : 'text-rose-700'}">$${Math.abs(Math.round(rubyBalanceTWD)).toLocaleString()}</p>
+                            <p class="text-[10px] opacity-60">(¥${Math.abs(Math.round(rubyBalanceJPY)).toLocaleString()})</p>
+                        </div>
                     </div>
-                    <div class="bg-stone-50 p-3 rounded-lg border border-stone-100">
-                        <p class="text-[10px] font-bold text-stone-500 mb-1 uppercase">👦 Wen 個人支出</p>
-                        <p class="text-lg font-black text-blue-600">$${Math.round(summary.wenOweTWD).toLocaleString()}</p>
-                        <p class="text-[10px] text-stone-400">(¥${Math.round(summary.wenOweJPY).toLocaleString()})</p>
+
+                    <div class="p-4 rounded-xl border ${wenBalanceTWD >= 0 ? 'bg-emerald-50 border-emerald-100' : 'bg-rose-50 border-rose-100'}">
+                        <p class="text-xs font-bold text-stone-500 mb-2">👦 Wen</p>
+                        <div class="mb-3">
+                            <p class="text-[10px] text-stone-400 uppercase">總墊款</p>
+                            <p class="font-bold text-stone-700">$${Math.round(sum.wenPaidTWD).toLocaleString()}</p>
+                        </div>
+                        <div class="pt-2 border-t border-white/50">
+                            <p class="text-[10px] font-bold ${wenBalanceTWD >= 0 ? 'text-emerald-600' : 'text-rose-600'}">${wenBalanceTWD >= 0 ? '💰 目前應收' : '💸 目前應付'}</p>
+                            <p class="text-xl font-black ${wenBalanceTWD >= 0 ? 'text-emerald-700' : 'text-rose-700'}">$${Math.abs(Math.round(wenBalanceTWD)).toLocaleString()}</p>
+                            <p class="text-[10px] opacity-60">(¥${Math.abs(Math.round(wenBalanceJPY)).toLocaleString()})</p>
+                        </div>
                     </div>
                 </div>
 
-                <div class="mt-4 p-5 rounded-xl text-center border-2 ${balanceTWD > 0 ? 'bg-orange-50 border-orange-200 text-orange-800' : 'bg-green-50 border-green-200 text-green-800'}">
-                    <p class="text-xs font-bold uppercase mb-1">${balanceTWD > 0 ? 'Wen 應補給 Ruby' : 'Ruby 應補給 Wen'}</p>
-                    <p class="text-3xl font-black">$${Math.abs(Math.round(balanceTWD)).toLocaleString()} <span class="text-sm font-normal">TWD</span></p>
-                    <p class="text-sm font-medium opacity-70 mt-1">(¥${Math.abs(Math.round(balanceJPY)).toLocaleString()} JPY)</p>
+                <div class="bg-stone-50 p-4 rounded-xl text-center border-dashed border-2 border-stone-200">
+                    <p class="text-xs font-bold text-stone-400 mb-1 uppercase tracking-widest">最終清算方向</p>
+                    ${rubyBalanceTWD === 0 ? '<p class="font-bold">目前雙方互不相欠！</p>' : `
+                        <p class="text-lg font-black text-[var(--jp-indigo)]">
+                            ${rubyBalanceTWD < 0 ? 'Ruby ➡ 補貼 ➡ Wen' : 'Wen ➡ 補貼 ➡ Ruby'}
+                        </p>
+                        <p class="text-2xl font-black text-[var(--jp-accent-red)]">$${Math.abs(Math.round(rubyBalanceTWD)).toLocaleString()} <span class="text-sm">TWD</span></p>
+                    `}
                 </div>`;
         }
 
         window.exportToText = () => {
             const exps = travelData.expenses || [];
-            if (exps.length === 0) return alert("目前沒有帳單紀錄喔！");
-            const today = new Date();
-            const dateStr = `${today.getFullYear()}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getDate().toString().padStart(2, '0')}`;
+            if (exps.length === 0) return alert("目前沒有帳單紀錄！");
             
-            let sum = { twdTotal: 0, rubyPaidTWD: 0, wenPaidTWD: 0, rubyOweTWD: 0, wenOweTWD: 0, rubyPaidJPY: 0, wenPaidJPY: 0, rubyOweJPY: 0, wenOweJPY: 0 };
-            let details = "";
-
-            // 按日期排序明細
-            const sortedExps = exps.slice().sort((a,b) => new Date(a.date) - new Date(b.date));
-
-            sortedExps.forEach(e => {
+            let sum = { twdTotal: 0, rubyPaidTWD: 0, wenPaidTWD: 0, rubyShareTWD: 0, wenShareTWD: 0 };
+            exps.forEach(e => {
                 sum.twdTotal += e.amtTWD;
-                if (e.payer === 'Ruby') { sum.rubyPaidTWD += e.amtTWD; sum.rubyPaidJPY += e.amt; } 
-                else { sum.wenPaidTWD += e.amtTWD; sum.wenPaidJPY += e.amt; }
-
-                const shareTWD = (e.splitWith.length > 0) ? e.amtTWD / e.splitWith.length : 0;
-                const shareJPY = (e.splitWith.length > 0) ? e.amt / e.splitWith.length : 0;
-                if (e.splitWith.includes('Ruby')) { sum.rubyOweTWD += shareTWD; sum.rubyOweJPY += shareJPY; }
-                if (e.splitWith.includes('Wen')) { sum.wenOweTWD += shareTWD; sum.wenOweJPY += shareJPY; }
-
-                const icon = e.method === 'CARD' ? '💳' : (e.method === 'TWD_CASH' ? '💵' : '💴');
-                let splitText = e.splitWith.length === 2 ? '平分' : (e.splitWith.length === 1 ? `${e.splitWith[0]}私人` : '無人分帳');
-                details += `📅 ${e.date.split('-').slice(1).join('/')} ${icon} ${e.name} (${splitText})\n   └ ${e.payer}付 ¥${e.amt} ($${e.amtTWD})\n`;
+                if (e.payer === 'Ruby') sum.rubyPaidTWD += e.amtTWD; else sum.wenPaidTWD += e.amtTWD;
+                const count = e.splitWith.length;
+                if(count > 0) {
+                    if(e.splitWith.includes('Ruby')) sum.rubyShareTWD += e.amtTWD / count;
+                    if(e.splitWith.includes('Wen')) sum.wenShareTWD += e.amtTWD / count;
+                }
             });
 
-            const balanceTWD = Math.round(sum.rubyPaidTWD - sum.rubyOweTWD);
-            const balanceJPY = Math.round(sum.rubyPaidJPY - sum.rubyOweJPY);
-            const settleText = balanceTWD > 0 
-                ? `✨ Wen 應補給 Ruby：$${Math.abs(balanceTWD)} TWD (¥${Math.abs(balanceJPY)})` 
-                : balanceTWD < 0 ? `✨ Ruby 應補給 Wen：$${Math.abs(balanceTWD)} TWD (¥${Math.abs(balanceJPY)})` : `✨ 雙方平分！`;
+            const rubyBal = Math.round(sum.rubyPaidTWD - sum.rubyShareTWD);
+            const settleText = rubyBal < 0 
+                ? `👉 Ruby 應付給 Wen：$${Math.abs(rubyBal)} TWD` 
+                : rubyBal > 0 ? `👉 Wen 應付給 Ruby：$${Math.abs(rubyBal)} TWD` : `✅ 雙方平分！`;
 
-            const report = `┏━━━ 🧸 旅費分帳報表 ━━━┓\n\n  📅 報告日期：${dateStr}\n  🌍 旅程總花費：$${Math.round(sum.twdTotal)} TWD\n\n  --- 💰 墊款總額 (誰先付錢) ---\n  🙋 Ruby 共墊：$${Math.round(sum.rubyPaidTWD)} TWD\n  🙋 Wen  共墊：$${Math.round(sum.wenPaidTWD)} TWD\n\n  --- 📜 支出明細 ---\n${details}\n  --- 📊 最終結算 ---\n  ${settleText}\n\n┗━━━━━━━━━━━━━━━━┛`;
-            navigator.clipboard.writeText(report).then(() => alert("報表已複製到剪貼簿！"));
+            const report = `┏━━━ 🧸 旅費結算報表 ━━━┓\n\n🌍 旅程總支出：$${Math.round(sum.twdTotal)} TWD\n\n🙋 Ruby 總墊款：$${Math.round(sum.rubyPaidTWD)}\n🙋 Wen  總墊款：$${Math.round(sum.wenPaidTWD)}\n\n📊 結算結果：\n${settleText}\n\n┗━━━━━━━━━━━━━━━━┛`;
+            navigator.clipboard.writeText(report).then(() => alert("報告已複製！"));
         };
 
-        window.clearAllExpenses = () => { if(confirm("確定清空所有帳單？此動作無法復原！")) { travelData.expenses = []; pushToCloud(); } };
+        window.clearAllExpenses = () => { if(confirm("確定清空所有帳單？")) { travelData.expenses = []; pushToCloud(); } };
         window.switchPage = (p) => {
             document.getElementById('itinerary-page').classList.toggle('hidden', p !== 'itinerary');
             document.getElementById('split-page').classList.toggle('hidden', p !== 'split');

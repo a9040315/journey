@@ -104,7 +104,7 @@
                         <button onclick="addExpense()" class="w-full bg-[var(--jp-bamboo)] text-white py-2 rounded-lg font-bold shadow-md hover:opacity-90 transition">加入帳單</button>
                     </div>
 
-                    <h3 class="font-bold mb-2 border-b pb-1 text-[10px] text-stone-400 text-center uppercase tracking-widest">支出明細 (點擊圖示/名稱/金額可編輯)</h3>
+                    <h3 class="font-bold mb-2 border-b pb-1 text-[10px] text-stone-400 text-center uppercase tracking-widest">支出明細 (點擊名稱/金額可直接修改)</h3>
                     <div id="expenseHistory" class="text-sm space-y-2 max-h-96 overflow-y-auto"></div>
                 </div>
 
@@ -147,15 +147,15 @@
                 travelData = data;
                 if(!travelData.itinerary) travelData.itinerary = [];
                 if(!travelData.expenses) travelData.expenses = [];
-                document.getElementById('syncStatus').innerHTML = "🟢 雲端同步中";
                 renderTable();
                 renderExpenses();
+                document.getElementById('syncStatus').innerHTML = "🟢 雲端同步中";
             }
         });
 
         function pushToCloud() { set(travelRef, travelData); }
 
-        // --- 行程與匯率 ---
+        // --- 基礎編輯功能 ---
         window.addRow = () => { travelData.itinerary.push({ time: "09:00", trans: "🚶 步行", location: "新的景點", mapUrl: "", amount: 0, notes: "" }); pushToCloud(); };
         window.updateCell = (idx, field, val) => { travelData.itinerary[idx][field] = field === 'amount' ? parseFloat(val) || 0 : val; pushToCloud(); };
         window.deleteRow = (idx) => { if(confirm("確定刪除？")) { travelData.itinerary.splice(idx, 1); pushToCloud(); } };
@@ -163,6 +163,7 @@
 
         function renderTable() {
             const tbody = document.getElementById('itineraryBody');
+            if(!tbody) return;
             tbody.innerHTML = (travelData.itinerary || []).map((item, i) => `
                 <tr class="hover:bg-stone-50 border-b border-stone-100">
                     <td class="table-cell"><input type="time" value="${item.time}" onchange="updateCell(${i}, 'time', this.value)" class="bg-transparent text-xs"></td>
@@ -187,8 +188,9 @@
             const splitWith = [];
             if(document.getElementById('splitRuby').checked) splitWith.push('Ruby');
             if(document.getElementById('splitWen').checked) splitWith.push('Wen');
-            if(!name || !amtRaw) return alert("請輸入名稱與金額");
-
+            
+            if(!name || isNaN(amtRaw)) return alert("請輸入名稱與金額");
+            
             let amtJPY = currency === 'JPY' ? amtRaw : Math.round(amtRaw / travelData.rate);
             let amtTWD = currency === 'TWD' ? amtRaw : Math.round(amtRaw * travelData.rate);
 
@@ -200,7 +202,7 @@
 
         window.updateExpenseName = (id, newText) => {
             const index = travelData.expenses.findIndex(e => e.id === id);
-            if (index !== -1 && travelData.expenses[index].name !== newText.trim()) {
+            if (index !== -1) {
                 travelData.expenses[index].name = newText.trim();
                 pushToCloud();
             }
@@ -218,11 +220,9 @@
             const index = travelData.expenses.findIndex(e => e.id === id);
             const amt = parseFloat(newAmtJPY.replace(/[^\d.-]/g, ''));
             if (index !== -1 && !isNaN(amt)) {
-                if (travelData.expenses[index].amt !== amt) {
-                    travelData.expenses[index].amt = amt;
-                    travelData.expenses[index].amtTWD = Math.round(amt * travelData.rate);
-                    pushToCloud();
-                }
+                travelData.expenses[index].amt = amt;
+                travelData.expenses[index].amtTWD = Math.round(amt * travelData.rate);
+                pushToCloud();
             } else { renderExpenses(); }
         };
 
@@ -232,13 +232,14 @@
             const historyDiv = document.getElementById('expenseHistory');
             const exps = travelData.expenses || [];
             
+            // 渲染明細列表
             historyDiv.innerHTML = exps.map(e => {
                 const icon = e.payMethod === 'card' ? '💳' : '💵';
                 return `
                 <div class="flex justify-between items-center bg-white p-2 rounded shadow-sm border border-stone-100">
                     <div class="flex flex-col flex-1">
                         <div class="flex items-center gap-1">
-                            <span onclick="togglePayMethod(${e.id})" class="method-toggle">${icon}</span>
+                            <span onclick="togglePayMethod(${e.id})" class="method-toggle cursor-pointer">${icon}</span>
                             <span contenteditable="true" onblur="updateExpenseName(${e.id}, this.innerText)" class="font-bold text-stone-700 editable-field">${e.name}</span>
                         </div>
                         <span class="text-[10px] text-stone-400 px-1">由 ${e.payer} 付 / 算 ${e.splitWith.join('&')}</span>
@@ -256,32 +257,33 @@
                 </div>
             `}).reverse().join('') || '<p class="text-stone-400 italic text-center">尚未有支出紀錄</p>';
 
-            // 統計計算
+            // 統計數據
             let rubyPaidTWD = 0, wenPaidTWD = 0, rubyShouldTWD = 0, wenShouldTWD = 0;
-            let rubyPaidJPY = 0, wenPaidJPY = 0, totalCashJPY = 0, totalCashTWD = 0, totalCardJPY = 0, totalCardTWD = 0;
+            let cashJPY = 0, cashTWD = 0, cardJPY = 0, cardTWD = 0;
 
             exps.forEach(e => {
-                if(e.payer === 'Ruby') { rubyPaidJPY += e.amt; rubyPaidTWD += e.amtTWD; }
-                else { wenPaidJPY += e.amt; wenPaidTWD += e.amtTWD; }
+                // 付款人統計
+                if(e.payer === 'Ruby') rubyPaidTWD += e.amtTWD;
+                else wenPaidTWD += e.amtTWD;
 
-                const shareJPY = e.amt / e.splitWith.length;
+                // 應付金額統計
                 const shareTWD = e.amtTWD / e.splitWith.length;
                 if(e.splitWith.includes('Ruby')) rubyShouldTWD += shareTWD;
                 if(e.splitWith.includes('Wen')) wenShouldTWD += shareTWD;
 
-                if(e.payMethod === 'cash') { totalCashJPY += e.amt; totalCashTWD += e.amtTWD; }
-                else { totalCardJPY += e.amt; totalCardTWD += e.amtTWD; }
+                // 支付方式統計
+                if(e.payMethod === 'cash') { cashJPY += e.amt; cashTWD += e.amtTWD; }
+                else { cardJPY += e.amt; cardTWD += e.amtTWD; }
             });
 
-            const rubyBalJPY = rubyPaidJPY - (exps.reduce((acc, e) => acc + (e.splitWith.includes('Ruby') ? e.amt/e.splitWith.length : 0), 0));
-            const rubyBalTWD = rubyPaidTWD - rubyShouldTWD;
+            const balanceTWD = rubyPaidTWD - rubyShouldTWD;
             const reportDiv = document.getElementById('settlementReport');
             
             let resultHtml = "";
-            if (rubyBalTWD > 0.5) {
-                resultHtml = `<div class="p-4 bg-orange-50 border border-orange-200 rounded text-orange-800 text-center shadow-inner"><strong class="text-sm">Wen 應付給 Ruby</strong><br><span class="text-3xl font-black">NT$ ${Math.abs(rubyBalTWD).toFixed(0)}</span></div>`;
-            } else if (rubyBalTWD < -0.5) {
-                resultHtml = `<div class="p-4 bg-green-50 border border-green-200 rounded text-green-800 text-center shadow-inner"><strong class="text-sm">Ruby 應付給 Wen</strong><br><span class="text-3xl font-black">NT$ ${Math.abs(rubyBalTWD).toFixed(0)}</span></div>`;
+            if (balanceTWD > 0.5) {
+                resultHtml = `<div class="p-4 bg-orange-50 border border-orange-200 rounded text-orange-800 text-center shadow-inner"><strong class="text-sm">Wen 應付給 Ruby</strong><br><span class="text-3xl font-black">NT$ ${Math.abs(balanceTWD).toFixed(0)}</span></div>`;
+            } else if (balanceTWD < -0.5) {
+                resultHtml = `<div class="p-4 bg-green-50 border border-green-200 rounded text-green-800 text-center shadow-inner"><strong class="text-sm">Ruby 應付給 Wen</strong><br><span class="text-3xl font-black">NT$ ${Math.abs(balanceTWD).toFixed(0)}</span></div>`;
             } else if (exps.length > 0) {
                 resultHtml = `<div class="p-4 bg-blue-50 text-center rounded font-bold border border-blue-100">兩邊目前平分！</div>`;
             }
@@ -294,65 +296,37 @@
                 <div class="space-y-2 py-2">
                     <div class="flex justify-between items-center text-sm px-2 py-1 bg-stone-50 rounded border-l-4 border-emerald-500">
                         <span class="text-stone-500">💵 現金總計</span>
-                        <span class="font-bold text-emerald-700">¥${totalCashJPY} <span class="text-[10px] font-normal">($${totalCashTWD})</span></span>
+                        <span class="font-bold text-emerald-700">¥${cashJPY} <span class="text-[10px] font-normal">($${cashTWD})</span></span>
                     </div>
                     <div class="flex justify-between items-center text-sm px-2 py-1 bg-stone-50 rounded border-l-4 border-sky-500">
                         <span class="text-stone-500">💳 刷卡總計</span>
-                        <span class="font-bold text-sky-700">¥${totalCardJPY} <span class="text-[10px] font-normal">($${totalCardTWD})</span></span>
+                        <span class="font-bold text-sky-700">¥${cardJPY} <span class="text-[10px] font-normal">($${cardTWD})</span></span>
                     </div>
                 </div>
                 ${resultHtml}
             `;
         }
 
-        // --- LINE 導出功能 ---
         window.exportToText = () => {
             const exps = travelData.expenses || [];
             if (exps.length === 0) return alert("目前沒有帳單！");
-
-            let rubyPaidTWD = 0, wenPaidTWD = 0, rubyShouldTWD = 0, wenShouldTWD = 0;
-            let cashJPY = 0, cardJPY = 0, details = "";
-
+            let rubyPaidTWD = 0, rubyShouldTWD = 0, cashJPY = 0, cardJPY = 0, details = "";
             exps.forEach(e => {
                 const icon = e.payMethod === 'card' ? '💳' : '💵';
                 const splitTag = e.splitWith.length === 2 ? ' (平分)' : ''; 
                 if(e.payer === 'Ruby') rubyPaidTWD += e.amtTWD;
-                else wenPaidTWD += e.amtTWD;
-
                 const shareTWD = e.amtTWD / e.splitWith.length;
                 if(e.splitWith.includes('Ruby')) rubyShouldTWD += shareTWD;
-                if(e.splitWith.includes('Wen')) wenShouldTWD += shareTWD;
-
-                if(e.payMethod === 'cash') cashJPY += e.amt;
-                else cardJPY += e.amt;
-
+                if(e.payMethod === 'cash') cashJPY += e.amt; else cardJPY += e.amt;
                 details += `${icon} ${e.name}${splitTag}\n   └ ${e.payer}付 ¥${e.amt} ($${e.amtTWD})\n`;
             });
-
             const balance = Math.round(rubyPaidTWD - rubyShouldTWD);
-            let resultText = balance > 0 ? `✨ Wen 應補給 Ruby：$${Math.abs(balance)} TWD` : 
-                             balance < 0 ? `✨ Ruby 應補給 Wen：$${Math.abs(balance)} TWD` : `✅ 雙方平分！`;
-
-            const reportMsg = 
-`┏━━━ 🧸 旅費分帳報表 ━━━┓
-  📅 日期：${new Date().toLocaleDateString()}
-  💵 現金總計：¥${cashJPY}
-  💳 刷卡總計：¥${cardJPY}
-
-  --- 💰 墊款總額 ---
-  🙋 Ruby 共墊：$${Math.round(rubyPaidTWD)} TWD
-  🙋 Wen  共墊：$${Math.round(wenPaidTWD)} TWD
-
-  --- 📜 支出明細 ---
-${details}
-  --- 📊 最終結算 ---
-  ${resultText}
-┗━━━━━━━━━━━━━━━━┛`;
-
-            navigator.clipboard.writeText(reportMsg).then(() => alert("詳細圖表報告已複製！"));
+            const res = balance > 0 ? `✨ Wen 應補給 Ruby：$${Math.abs(balance)} TWD` : balance < 0 ? `✨ Ruby 應補給 Wen：$${Math.abs(balance)} TWD` : `✅ 雙方平分！`;
+            const msg = `┏━━━ 🧸 旅費分帳報表 ━━━┓\n  📅 日期：${new Date().toLocaleDateString()}\n  💵 現金總計：¥${cashJPY}\n  💳 刷卡總計：¥${cardJPY}\n\n  --- 📜 支出明細 ---\n${details}\n  --- 📊 最終結算 ---\n  ${res}\n┗━━━━━━━━━━━━━━━━┛`;
+            navigator.clipboard.writeText(msg).then(() => alert("詳細圖表報告已複製！"));
         };
 
-        window.clearAllExpenses = () => { if(confirm("清空？") && prompt("輸入 delete") === 'delete') { travelData.expenses = []; pushToCloud(); } };
+        window.clearAllExpenses = () => { if(confirm("確定清空所有分帳明細？") && prompt("輸入 delete 以確認") === 'delete') { travelData.expenses = []; pushToCloud(); } };
         window.switchPage = (p) => {
             document.getElementById('itinerary-page').classList.toggle('hidden', p !== 'itinerary');
             document.getElementById('split-page').classList.toggle('hidden', p !== 'split');

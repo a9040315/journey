@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🧸 大手牽小手旅行 (進階統計版) ✈️💖</title>
+    <title>🧸 大手牽小手旅行 (功能完整版) ✈️💖</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script type="importmap">
     {
@@ -23,6 +23,7 @@
         .tab-btn { padding: 12px 24px; font-weight: 600; cursor: pointer; transition: 0.3s; border-bottom: 3px solid transparent; }
         .active-tab { color: var(--jp-indigo); border-bottom: 3px solid var(--jp-indigo); }
         .editable-item:focus { background-color: #fef9c3; outline: none; border-radius: 4px; padding: 0 2px; }
+        select.mini-select { background: transparent; border: 1px solid #e5e7eb; border-radius: 4px; padding: 2px; font-size: 11px; }
     </style>
 </head>
 <body class="p-2 sm:p-8">
@@ -104,8 +105,8 @@
                     </div>
                     
                     <div class="mt-8">
-                        <h3 class="font-bold mb-2 border-b pb-1 text-sm text-stone-500 text-center">支出明細 (點擊文字可直接修改)</h3>
-                        <div id="expenseHistory" class="text-sm space-y-2 max-h-80 overflow-y-auto"></div>
+                        <h3 class="font-bold mb-2 border-b pb-1 text-sm text-stone-500 text-center">支出明細 (點擊文字或下拉選單直接修改)</h3>
+                        <div id="expenseHistory" class="text-sm space-y-2 max-h-80 overflow-y-auto px-1"></div>
                     </div>
                 </div>
 
@@ -193,17 +194,10 @@
             const splitWith = [];
             if(document.getElementById('splitRuby').checked) splitWith.push('Ruby');
             if(document.getElementById('splitWen').checked) splitWith.push('Wen');
-
             if(!name || !amtRaw) return alert("請輸入完整內容");
-
             let amtJPY = currency === 'JPY' ? amtRaw : Math.round(amtRaw / rate);
             let amtTWD = currency === 'TWD' ? amtRaw : Math.round(amtRaw * rate);
-
-            travelData.expenses.push({ 
-                id: Date.now(), name, amt: amtJPY, amtTWD: amtTWD, 
-                method, payer, splitWith 
-            });
-
+            travelData.expenses.push({ id: Date.now(), name, amt: amtJPY, amtTWD: amtTWD, method, payer, splitWith });
             document.getElementById('expName').value = '';
             document.getElementById('expAmount').value = '';
             pushToCloud();
@@ -212,7 +206,16 @@
         window.updateExpField = (id, field, val) => {
             const idx = travelData.expenses.findIndex(e => e.id === id);
             if(idx !== -1) {
-                travelData.expenses[idx][field] = (field === 'amt' || field === 'amtTWD') ? parseFloat(val) || 0 : val;
+                if (field === 'splitWith') {
+                    const isChecked = val.checked;
+                    const name = val.value;
+                    let current = travelData.expenses[idx].splitWith || [];
+                    if(isChecked && !current.includes(name)) current.push(name);
+                    else if(!isChecked) current = current.filter(n => n !== name);
+                    travelData.expenses[idx].splitWith = current;
+                } else {
+                    travelData.expenses[idx][field] = (field === 'amt' || field === 'amtTWD') ? parseFloat(val) || 0 : val;
+                }
                 pushToCloud();
             }
         };
@@ -225,36 +228,51 @@
             const exps = travelData.expenses || [];
 
             historyDiv.innerHTML = exps.map(e => {
-                const icon = e.method === 'JPY_CASH' ? '💴' : e.method === 'TWD_CASH' ? '💵' : '💳';
+                const sRuby = e.splitWith.includes('Ruby') ? 'checked' : '';
+                const sWen = e.splitWith.includes('Wen') ? 'checked' : '';
                 return `
                 <div class="bg-white p-3 rounded shadow-sm border border-stone-100 mb-2">
-                    <div class="flex justify-between items-start">
+                    <div class="flex justify-between items-start mb-1">
                         <div class="flex items-center gap-1">
-                            <span class="text-xs">${icon}</span>
-                            <span contenteditable="true" onblur="updateExpField(${e.id}, 'name', this.innerText)" class="editable-item font-bold">${e.name}</span>
+                            <select onchange="updateExpField(${e.id}, 'method', this.value)" class="mini-select">
+                                <option value="JPY_CASH" ${e.method==='JPY_CASH'?'selected':''}>💴</option>
+                                <option value="TWD_CASH" ${e.method==='TWD_CASH'?'selected':''}>💵</option>
+                                <option value="CARD" ${e.method==='CARD'?'selected':''}>💳</option>
+                            </select>
+                            <span contenteditable="true" onblur="updateExpField(${e.id}, 'name', this.innerText)" class="editable-item font-bold text-sm">${e.name}</span>
                         </div>
                         <button onclick="deleteExpense(${e.id})" class="text-stone-300">✕</button>
                     </div>
-                    <div class="flex justify-between mt-2 text-xs">
-                        <span class="text-stone-400">${e.payer}付 / 分給 ${e.splitWith.join('&')}</span>
-                        <div class="text-right font-mono">
+                    <div class="flex flex-wrap justify-between items-center text-[11px] gap-2">
+                        <div class="flex items-center gap-2">
+                            <select onchange="updateExpField(${e.id}, 'payer', this.value)" class="mini-select">
+                                <option value="Ruby" ${e.payer==='Ruby'?'selected':''}>Ruby 付</option>
+                                <option value="Wen" ${e.payer==='Wen'?'selected':''}>Wen 付</option>
+                            </select>
+                            <div class="flex gap-1 items-center bg-stone-50 px-1 rounded">
+                                <span>分:</span>
+                                <label><input type="checkbox" ${sRuby} onchange="updateExpField(${e.id}, 'splitWith', this)" value="Ruby"> R</label>
+                                <label><input type="checkbox" ${sWen} onchange="updateExpField(${e.id}, 'splitWith', this)" value="Wen"> W</label>
+                            </div>
+                        </div>
+                        <div class="text-right font-mono leading-tight">
                             <span class="font-bold text-[var(--jp-indigo)]">¥<span contenteditable="true" onblur="updateExpField(${e.id}, 'amt', this.innerText)">${e.amt}</span></span>
-                            <span class="block text-[10px] text-stone-400">$<span contenteditable="true" onblur="updateExpField(${e.id}, 'amtTWD', this.innerText)">${e.amtTWD}</span></span>
+                            <span class="block text-[9px] text-stone-400">$<span contenteditable="true" onblur="updateExpField(${e.id}, 'amtTWD', this.innerText)">${e.amtTWD}</span></span>
                         </div>
                     </div>
                 </div>`;
-            }).reverse().join('') || '<p class="text-center text-stone-400 italic">無紀錄</p>';
+            }).reverse().join('') || '<p class="text-center text-stone-400 italic text-sm">無紀錄</p>';
 
-            let summary = { JPY_CASH: 0, TWD_CASH: 0, CARD: 0, rubyPaid: 0, wenPaid: 0, rubyOwe: 0, wenOwe: 0 };
+            let summary = { JPY_CASH: 0, TWD_CASH: 0, CARD: 0, rubyPaid: 0, wenPaid: 0, rubyOwe: 0, wenOwe: 0, rubyTotalExpend: 0, wenTotalExpend: 0 };
             exps.forEach(e => {
                 if(e.method === 'JPY_CASH') summary.JPY_CASH += e.amt;
                 if(e.method === 'TWD_CASH') summary.TWD_CASH += e.amt;
                 if(e.method === 'CARD') summary.CARD += e.amt;
                 
                 if(e.payer === 'Ruby') summary.rubyPaid += e.amt; else summary.wenPaid += e.amt;
-                const share = e.amt / e.splitWith.length;
-                if(e.splitWith.includes('Ruby')) summary.rubyOwe += share;
-                if(e.splitWith.includes('Wen')) summary.wenOwe += share;
+                const share = (e.splitWith.length > 0) ? e.amt / e.splitWith.length : 0;
+                if(e.splitWith.includes('Ruby')) { summary.rubyOwe += share; summary.rubyTotalExpend += share; }
+                if(e.splitWith.includes('Wen')) { summary.wenOwe += share; summary.wenTotalExpend += share; }
             });
 
             const balance = summary.rubyPaid - summary.rubyOwe;
@@ -272,6 +290,16 @@
                     <div class="p-2 bg-purple-50 rounded border border-purple-100 text-center">
                         <p class="text-[10px] text-purple-600 font-bold uppercase">💳 刷卡總計</p>
                         <p class="font-bold text-sm">¥${summary.CARD}</p>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-stone-50 p-3 rounded-lg border border-stone-100">
+                        <p class="text-xs font-bold text-stone-500 mb-1">👩 Ruby 個人支出</p>
+                        <p class="text-lg font-black text-rose-600">¥${Math.round(summary.rubyTotalExpend)}</p>
+                    </div>
+                    <div class="bg-stone-50 p-3 rounded-lg border border-stone-100">
+                        <p class="text-xs font-bold text-stone-500 mb-1">👦 Wen 個人支出</p>
+                        <p class="text-lg font-black text-blue-600">¥${Math.round(summary.wenTotalExpend)}</p>
                     </div>
                 </div>
                 <div class="mt-4 p-4 rounded-lg text-center ${balance > 0 ? 'bg-orange-50 text-orange-800' : 'bg-green-50 text-green-800'}">
@@ -292,14 +320,12 @@
                 if (e.method === 'JPY_CASH') sum.JPY_CASH += e.amt;
                 else if (e.method === 'TWD_CASH') sum.TWD_CASH += e.amt;
                 else if (e.method === 'CARD') sum.CARD += e.amt;
-
                 if (e.payer === 'Ruby') sum.rubyPaidTWD += e.amtTWD; else sum.wenPaidTWD += e.amtTWD;
-                const shareTWD = e.amtTWD / e.splitWith.length;
+                const shareTWD = (e.splitWith.length > 0) ? e.amtTWD / e.splitWith.length : 0;
                 if (e.splitWith.includes('Ruby')) sum.rubyOweTWD += shareTWD;
                 if (e.splitWith.includes('Wen')) sum.wenOweTWD += shareTWD;
-
                 const icon = e.method === 'CARD' ? '💳' : '💵';
-                const splitText = e.splitWith.length === 2 ? '平分' : `${e.splitWith[0]}私人`;
+                let splitText = e.splitWith.length === 2 ? '平分' : (e.splitWith.length === 1 ? `${e.splitWith[0]}私人` : '無人分帳');
                 details += `${icon} ${e.name} (${splitText})\n   └ ${e.payer}付 ¥${e.amt} ($${e.amtTWD})\n`;
             });
 

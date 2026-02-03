@@ -251,10 +251,14 @@
                 jpyCash: 0, 
                 twdCash: 0, 
                 card: 0, 
-                rubyPaidNonJpy: 0, // 僅限台幣與刷卡的墊款
-                wenPaidNonJpy: 0,  // 僅限台幣與刷卡的墊款
-                rubyShareNonJpy: 0, // 僅限台幣與刷卡的分帳
-                wenShareNonJpy: 0   // 僅限台幣與刷卡的分帳
+                rubyPaidNonJpy: 0, 
+                wenPaidNonJpy: 0,  
+                rubyShareNonJpy: 0, 
+                wenShareNonJpy: 0,
+                rubyPersonalTwd: 0, // Ruby 個人消耗總計 (僅台幣+刷卡)
+                wenPersonalTwd: 0,  // Wen 個人消耗總計 (僅台幣+刷卡)
+                rubyPersonalJpy: 0, // Ruby 個人日圓消耗 (僅日圓現金項目)
+                wenPersonalJpy: 0   // Wen 個人日圓消耗 (僅日圓現金項目)
             };
 
             exps.forEach(e => {
@@ -262,30 +266,38 @@
                 const jpyAmt = (e.amt || 0);
                 const count = (e.splitWith || []).length;
                 
-                // 各項分類顯示統計
                 if(e.method === 'JPY_CASH') {
+                    // --- 日圓項目處理 ---
                     stats.jpyCash += jpyAmt;
-                    // 日圓項目：不計入 displayTotal, 不計入 Ruby/Wen 墊款與分帳
+                    if(count > 0) {
+                        const personalJpyShare = jpyAmt / count;
+                        if(e.splitWith.includes('Ruby')) stats.rubyPersonalJpy += personalJpyShare;
+                        if(e.splitWith.includes('Wen')) stats.wenPersonalJpy += personalJpyShare;
+                    }
                 } else {
-                    // 台幣現金 或 刷卡項目
+                    // --- 台幣與刷卡項目處理 ---
                     if(e.method === 'TWD_CASH') stats.twdCash += twdAmt;
                     if(e.method === 'CARD') stats.card += twdAmt;
-                    
                     stats.displayTotal += twdAmt;
 
-                    // 計算非日圓的墊款
+                    // 計算墊款
                     if(e.payer === 'Ruby') stats.rubyPaidNonJpy += twdAmt; else stats.wenPaidNonJpy += twdAmt;
 
-                    // 計算非日圓的分帳
+                    // 計算分帳負擔
                     if(count > 0) {
                         const share = twdAmt / count;
-                        if(e.splitWith.includes('Ruby')) stats.rubyShareNonJpy += share;
-                        if(e.splitWith.includes('Wen')) stats.wenShareNonJpy += share;
+                        if(e.splitWith.includes('Ruby')) {
+                            stats.rubyShareNonJpy += share;
+                            stats.rubyPersonalTwd += share; // 加入個人消耗(台幣)
+                        }
+                        if(e.splitWith.includes('Wen')) {
+                            stats.wenShareNonJpy += share;
+                            stats.wenPersonalTwd += share;  // 加入個人消耗(台幣)
+                        }
                     }
                 }
             });
 
-            // 結算金額 (僅基於台幣現金與刷卡)
             const rubyBal = stats.rubyPaidNonJpy - stats.rubyShareNonJpy;
 
             reportDiv.innerHTML = `
@@ -293,6 +305,35 @@
                     <p class="text-xs text-stone-400 uppercase tracking-widest mb-1">🌍 旅程總支出 (台幣現+刷卡)</p>
                     <p class="text-4xl font-black text-[var(--jp-indigo)]">$${Math.round(stats.displayTotal).toLocaleString()}</p>
                 </div>
+                
+                <div class="bg-stone-50 p-4 rounded-lg border border-stone-100">
+                    <p class="text-[10px] font-bold text-stone-400 mb-2 uppercase text-center">👤 個人花費總額 (不含日圓)</p>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="text-center">
+                            <p class="text-xs text-rose-600 font-medium">Ruby</p>
+                            <p class="text-lg font-bold text-stone-700">$${Math.round(stats.rubyPersonalTwd).toLocaleString()}</p>
+                        </div>
+                        <div class="text-center border-l">
+                            <p class="text-xs text-blue-600 font-medium">Wen</p>
+                            <p class="text-lg font-bold text-stone-700">$${Math.round(stats.wenPersonalTwd).toLocaleString()}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-orange-50/50 p-4 rounded-lg border border-orange-100">
+                    <p class="text-[10px] font-bold text-orange-400 mb-2 uppercase text-center">💴 個人日圓花費 (現金項目)</p>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="text-center">
+                            <p class="text-[10px] text-orange-700">Ruby (¥)</p>
+                            <p class="text-lg font-mono font-bold text-orange-900">¥${Math.round(stats.rubyPersonalJpy).toLocaleString()}</p>
+                        </div>
+                        <div class="text-center border-l border-orange-200">
+                            <p class="text-[10px] text-orange-700">Wen (¥)</p>
+                            <p class="text-lg font-mono font-bold text-orange-900">¥${Math.round(stats.wenPersonalJpy).toLocaleString()}</p>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="grid grid-cols-3 gap-2 text-center text-[10px]">
                     <div class="bg-orange-50 p-2 rounded">
                         <p class="text-orange-600 font-bold mb-1">💴 日圓現金</p>
@@ -307,6 +348,7 @@
                         <p class="font-mono text-xs">$${Math.round(stats.card).toLocaleString()}</p>
                     </div>
                 </div>
+
                 <div class="space-y-3">
                     <div class="flex justify-between items-center text-sm p-3 bg-stone-50 rounded-lg">
                         <span>👩 Ruby 墊款 (不含日圓)</span>
@@ -317,6 +359,7 @@
                         <span class="font-bold text-blue-600">$${Math.round(stats.wenPaidNonJpy).toLocaleString()}</span>
                     </div>
                 </div>
+
                 <div class="mt-4 p-5 rounded-xl text-center border-2 border-[var(--jp-accent-red)] bg-rose-50 shadow-inner">
                     <p class="text-xs font-bold text-rose-800 mb-1">最終結算金額 (排除日圓現金)</p>
                     ${Math.abs(rubyBal) < 1 ? '<p class="font-bold">✨ 目前互不相欠</p>' : `
@@ -350,7 +393,6 @@
             const exps = travelData.expenses || [];
             let stats = { total: 0, rubyPaid: 0, wenPaid: 0, rubyShare: 0, wenShare: 0 };
             exps.forEach(e => {
-                // LINE 報表同步修改：僅匯出非日圓項目的結算
                 if(e.method !== 'JPY_CASH') {
                     stats.total += e.amtTWD;
                     if(e.payer === 'Ruby') stats.rubyPaid += e.amtTWD; else stats.wenPaid += e.amtTWD;

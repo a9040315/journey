@@ -245,45 +245,48 @@
                 </div>
             `).join('') || '<p class="text-center text-stone-400 py-8 italic">目前尚無支出紀錄</p>';
 
-            // 統計邏輯
+            // 統計與結算邏輯
             let stats = { 
-                displayTotal: 0, // 新：台幣現金 + 刷卡
+                displayTotal: 0, // 台幣現金 + 刷卡
                 jpyCash: 0, 
                 twdCash: 0, 
                 card: 0, 
-                rubyPaid: 0, 
-                wenPaid: 0, 
-                rubyShare: 0, 
-                wenShare: 0 
+                rubyPaidNonJpy: 0, // 僅限台幣與刷卡的墊款
+                wenPaidNonJpy: 0,  // 僅限台幣與刷卡的墊款
+                rubyShareNonJpy: 0, // 僅限台幣與刷卡的分帳
+                wenShareNonJpy: 0   // 僅限台幣與刷卡的分帳
             };
 
             exps.forEach(e => {
                 const twdAmt = (e.amtTWD || 0);
                 const jpyAmt = (e.amt || 0);
+                const count = (e.splitWith || []).length;
                 
-                // 1. 各項分類統計
+                // 各項分類顯示統計
                 if(e.method === 'JPY_CASH') {
                     stats.jpyCash += jpyAmt;
-                } else if(e.method === 'TWD_CASH') {
-                    stats.twdCash += twdAmt;
-                    stats.displayTotal += twdAmt; // 計入大標題
-                } else if(e.method === 'CARD') {
-                    stats.card += twdAmt;
-                    stats.displayTotal += twdAmt; // 計入大標題
-                }
+                    // 日圓項目：不計入 displayTotal, 不計入 Ruby/Wen 墊款與分帳
+                } else {
+                    // 台幣現金 或 刷卡項目
+                    if(e.method === 'TWD_CASH') stats.twdCash += twdAmt;
+                    if(e.method === 'CARD') stats.card += twdAmt;
+                    
+                    stats.displayTotal += twdAmt;
 
-                // 2. 墊款與分帳統計 (仍以台幣為基準，含日圓項目的台幣換算)
-                if(e.payer === 'Ruby') stats.rubyPaid += twdAmt; else stats.wenPaid += twdAmt;
-                
-                const count = (e.splitWith || []).length;
-                if(count > 0) {
-                    const share = twdAmt / count;
-                    if(e.splitWith.includes('Ruby')) stats.rubyShare += share;
-                    if(e.splitWith.includes('Wen')) stats.wenShare += share;
+                    // 計算非日圓的墊款
+                    if(e.payer === 'Ruby') stats.rubyPaidNonJpy += twdAmt; else stats.wenPaidNonJpy += twdAmt;
+
+                    // 計算非日圓的分帳
+                    if(count > 0) {
+                        const share = twdAmt / count;
+                        if(e.splitWith.includes('Ruby')) stats.rubyShareNonJpy += share;
+                        if(e.splitWith.includes('Wen')) stats.wenShareNonJpy += share;
+                    }
                 }
             });
 
-            const rubyBal = stats.rubyPaid - stats.rubyShare;
+            // 結算金額 (僅基於台幣現金與刷卡)
+            const rubyBal = stats.rubyPaidNonJpy - stats.rubyShareNonJpy;
 
             reportDiv.innerHTML = `
                 <div class="text-center border-b pb-4">
@@ -306,16 +309,16 @@
                 </div>
                 <div class="space-y-3">
                     <div class="flex justify-between items-center text-sm p-3 bg-stone-50 rounded-lg">
-                        <span>👩 Ruby 總墊款 (含換算)</span>
-                        <span class="font-bold text-rose-600">$${Math.round(stats.rubyPaid).toLocaleString()}</span>
+                        <span>👩 Ruby 墊款 (不含日圓)</span>
+                        <span class="font-bold text-rose-600">$${Math.round(stats.rubyPaidNonJpy).toLocaleString()}</span>
                     </div>
                     <div class="flex justify-between items-center text-sm p-3 bg-stone-50 rounded-lg">
-                        <span>👦 Wen 總墊款 (含換算)</span>
-                        <span class="font-bold text-blue-600">$${Math.round(stats.wenPaid).toLocaleString()}</span>
+                        <span>👦 Wen 墊款 (不含日圓)</span>
+                        <span class="font-bold text-blue-600">$${Math.round(stats.wenPaidNonJpy).toLocaleString()}</span>
                     </div>
                 </div>
                 <div class="mt-4 p-5 rounded-xl text-center border-2 border-[var(--jp-accent-red)] bg-rose-50 shadow-inner">
-                    <p class="text-xs font-bold text-rose-800 mb-1">最終結算金額</p>
+                    <p class="text-xs font-bold text-rose-800 mb-1">最終結算金額 (排除日圓現金)</p>
                     ${Math.abs(rubyBal) < 1 ? '<p class="font-bold">✨ 目前互不相欠</p>' : `
                         <p class="text-lg font-black text-rose-900">${rubyBal < 0 ? 'Ruby 應補給 Wen' : 'Wen 應補給 Ruby'}</p>
                         <p class="text-3xl font-black text-rose-600">$${Math.abs(Math.round(rubyBal)).toLocaleString()} <span class="text-sm">TWD</span></p>
@@ -347,16 +350,19 @@
             const exps = travelData.expenses || [];
             let stats = { total: 0, rubyPaid: 0, wenPaid: 0, rubyShare: 0, wenShare: 0 };
             exps.forEach(e => {
-                stats.total += e.amtTWD;
-                if(e.payer === 'Ruby') stats.rubyPaid += e.amtTWD; else stats.wenPaid += e.amtTWD;
-                const count = (e.splitWith || []).length;
-                if(count > 0) {
-                    if(e.splitWith.includes('Ruby')) stats.rubyShare += e.amtTWD / count;
-                    if(e.splitWith.includes('Wen')) stats.wenShare += e.amtTWD / count;
+                // LINE 報表同步修改：僅匯出非日圓項目的結算
+                if(e.method !== 'JPY_CASH') {
+                    stats.total += e.amtTWD;
+                    if(e.payer === 'Ruby') stats.rubyPaid += e.amtTWD; else stats.wenPaid += e.amtTWD;
+                    const count = (e.splitWith || []).length;
+                    if(count > 0) {
+                        if(e.splitWith.includes('Ruby')) stats.rubyShare += e.amtTWD / count;
+                        if(e.splitWith.includes('Wen')) stats.wenShare += e.amtTWD / count;
+                    }
                 }
             });
             const bal = Math.round(stats.rubyPaid - stats.rubyShare);
-            const report = `🧸 旅費結算報表\n---\n🌍 總支出(含換算)：$${Math.round(stats.total)}\n🙋 Ruby 墊：$${Math.round(stats.rubyPaid)}\n🙋 Wen 墊：$${Math.round(stats.wenPaid)}\n---\n📊 結果：${bal < 0 ? 'Ruby 補給 Wen' : 'Wen 補給 Ruby'} $${Math.abs(bal)}`;
+            const report = `🧸 旅費結算報表 (排除日圓)\n---\n🌍 總支出：$${Math.round(stats.total)}\n🙋 Ruby 墊：$${Math.round(stats.rubyPaid)}\n🙋 Wen 墊：$${Math.round(stats.wenPaid)}\n---\n📊 結果：${bal < 0 ? 'Ruby 補給 Wen' : 'Wen 補給 Ruby'} $${Math.abs(bal)}`;
             navigator.clipboard.writeText(report).then(() => alert("已複製！"));
         };
 

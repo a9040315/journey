@@ -22,8 +22,9 @@
         .header-cell { background-color: var(--jp-indigo); color: white; padding: 12px; position: sticky; top: 0; z-index: 10; font-size: 0.85rem; }
         .tab-btn { padding: 12px 24px; font-weight: 600; cursor: pointer; transition: 0.3s; border-bottom: 3px solid transparent; }
         .active-tab { color: var(--jp-indigo); border-bottom: 3px solid var(--jp-indigo); }
-        .mini-select { background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 4px; padding: 2px 4px; font-size: 11px; color: #4b5563; cursor: pointer; transition: all 0.2s; }
-        .mini-select:hover { background: #e5e7eb; }
+        .mini-select { background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 4px; padding: 2px 4px; font-size: 11px; color: #4b5563; cursor: pointer; }
+        .editable-amt { border-bottom: 1px dashed #ccc; padding: 0 2px; font-weight: bold; }
+        .editable-amt:focus { background: #fff9c4; outline: none; border-bottom: 1px solid var(--jp-indigo); }
     </style>
 </head>
 <body class="p-2 sm:p-8">
@@ -66,7 +67,7 @@
                             </select>
                         </div>
                         <div class="bg-white p-3 rounded border border-stone-200 mb-4">
-                            <p class="text-[10px] font-bold text-stone-400 mb-2 uppercase">分帳對象</p>
+                            <p class="text-[10px] font-bold text-stone-400 mb-2 uppercase">預設分帳對象</p>
                             <div class="flex gap-4 text-sm">
                                 <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="splitRuby" checked> Ruby</label>
                                 <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="splitWen" checked> Wen</label>
@@ -76,7 +77,7 @@
                     </div>
 
                     <div>
-                        <h3 class="font-bold mb-2 border-b pb-1 text-sm text-stone-500">支出明細 (按日期排序)</h3>
+                        <h3 class="font-bold mb-2 border-b pb-1 text-sm text-stone-500">支出明細 (可直接修改金額與對象)</h3>
                         <div id="expenseHistory" class="space-y-2 max-h-[600px] overflow-y-auto pr-1"></div>
                     </div>
                 </div>
@@ -163,7 +164,17 @@
             let amtJPY = currency === 'JPY' ? amtRaw : Math.round(amtRaw / rate);
             let amtTWD = currency === 'TWD' ? amtRaw : Math.round(amtRaw * rate);
 
-            travelData.expenses.push({ id: Date.now(), date, name, amt: amtJPY, amtTWD: amtTWD, method, payer, splitWith });
+            travelData.expenses.push({ 
+                id: Date.now(), 
+                date, 
+                name, 
+                amt: amtJPY, 
+                amtTWD: amtTWD, 
+                method, 
+                payer, 
+                splitWith,
+                note: `¥${amtJPY}` // 預設備註存日圓
+            });
             document.getElementById('expName').value = '';
             document.getElementById('expAmount').value = '';
             pushToCloud();
@@ -172,7 +183,25 @@
         window.updateExpField = (id, field, val) => {
             const idx = travelData.expenses.findIndex(e => e.id === id);
             if(idx !== -1) {
-                travelData.expenses[idx][field] = (field === 'amt' || field === 'amtTWD') ? parseFloat(val) : val;
+                if(field === 'amtTWD' || field === 'amt') {
+                    travelData.expenses[idx][field] = parseFloat(val) || 0;
+                } else {
+                    travelData.expenses[idx][field] = val;
+                }
+                pushToCloud();
+            }
+        };
+
+        window.toggleSplitMember = (id, member) => {
+            const idx = travelData.expenses.findIndex(e => e.id === id);
+            if(idx !== -1) {
+                let current = travelData.expenses[idx].splitWith || [];
+                if(current.includes(member)) {
+                    current = current.filter(m => m !== member);
+                } else {
+                    current.push(member);
+                }
+                travelData.expenses[idx].splitWith = current;
                 pushToCloud();
             }
         };
@@ -184,56 +213,71 @@
             const reportDiv = document.getElementById('settlementReport');
             const exps = travelData.expenses || [];
 
-            // 1. 渲染明細 (按日期倒序排序，日期相同則按 ID 倒序)
             historyDiv.innerHTML = exps.slice().sort((a,b) => {
                 if (b.date !== a.date) return new Date(b.date) - new Date(a.date);
                 return b.id - a.id;
-            }).map(e => `
+            }).map(e => {
+                const isRuby = e.splitWith.includes('Ruby');
+                const isWen = e.splitWith.includes('Wen');
+                return `
                 <div class="bg-white p-3 rounded shadow-sm border border-stone-100 text-sm">
                     <div class="flex justify-between items-start mb-2">
-                        <span class="font-bold text-[var(--jp-indigo)]">${e.name}</span>
+                        <div class="flex flex-col">
+                            <span class="font-bold text-[var(--jp-indigo)]">${e.name}</span>
+                            <span class="text-[10px] text-stone-400">📅 ${e.date.split('-').slice(1).join('/')}</span>
+                        </div>
                         <button onclick="deleteExpense(${e.id})" class="text-stone-300 hover:text-red-500">✕</button>
                     </div>
-                    <div class="flex flex-wrap gap-2 justify-between items-center text-[11px] text-stone-500">
-                        <div class="flex gap-1 items-center">
-                            <span>📅 ${e.date.split('-').slice(1).join('/')}</span>
-                            <select onchange="updateExpField(${e.id}, 'payer', this.value)" class="mini-select ml-1">
+                    
+                    <div class="grid grid-cols-2 gap-2 mb-3">
+                        <div class="flex items-center gap-1">
+                            <span class="text-[10px] text-stone-400">台幣:</span>
+                            <span contenteditable="true" onblur="updateExpField(${e.id}, 'amtTWD', this.innerText)" class="editable-amt text-stone-800">$${e.amtTWD}</span>
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <span class="text-[10px] text-stone-400">備註:</span>
+                            <span contenteditable="true" onblur="updateExpField(${e.id}, 'note', this.innerText)" class="editable-amt text-stone-500 font-normal">${e.note || ''}</span>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-wrap gap-2 justify-between items-center text-[11px]">
+                        <div class="flex gap-2 items-center">
+                            <select onchange="updateExpField(${e.id}, 'payer', this.value)" class="mini-select">
                                 <option value="Ruby" ${e.payer==='Ruby'?'selected':''}>Ruby 付</option>
                                 <option value="Wen" ${e.payer==='Wen'?'selected':''}>Wen 付</option>
                             </select>
                             <select onchange="updateExpField(${e.id}, 'method', this.value)" class="mini-select">
-                                <option value="JPY_CASH" ${e.method==='JPY_CASH'?'selected':''}>💴 日圓現金</option>
-                                <option value="TWD_CASH" ${e.method==='TWD_CASH'?'selected':''}>💵 台幣現金</option>
+                                <option value="JPY_CASH" ${e.method==='JPY_CASH'?'selected':''}>💴 日圓現</option>
+                                <option value="TWD_CASH" ${e.method==='TWD_CASH'?'selected':''}>💵 台幣現</option>
                                 <option value="CARD" ${e.method==='CARD'?'selected':''}>💳 刷卡</option>
                             </select>
                         </div>
-                        <div class="text-right font-mono">
-                            <span class="font-bold text-stone-700">¥${e.amt}</span>
-                            <span>($${e.amtTWD})</span>
+                        <div class="flex gap-2 bg-stone-50 px-2 py-1 rounded border">
+                            <span class="text-stone-400">分帳:</span>
+                            <label class="cursor-pointer"><input type="checkbox" ${isRuby?'checked':''} onclick="toggleSplitMember(${e.id}, 'Ruby')"> R</label>
+                            <label class="cursor-pointer"><input type="checkbox" ${isWen?'checked':''} onclick="toggleSplitMember(${e.id}, 'Wen')"> W</label>
                         </div>
                     </div>
-                </div>
-            `).join('') || '<p class="text-center text-stone-400 py-8 italic">目前尚無支出紀錄</p>';
+                </div>`;
+            }).join('') || '<p class="text-center text-stone-400 py-8 italic">目前尚無支出紀錄</p>';
 
-            // 2. 統計邏輯
+            // 統計
             let stats = {
-                twdTotal: 0,
-                jpyCash: 0, twdCash: 0, card: 0,
-                rubyPaid: 0, wenPaid: 0,
-                rubyShare: 0, wenShare: 0
+                twdTotal: 0, jpyCash: 0, twdCash: 0, card: 0,
+                rubyPaid: 0, wenPaid: 0, rubyShare: 0, wenShare: 0
             };
 
             exps.forEach(e => {
-                stats.twdTotal += e.amtTWD;
-                if(e.method === 'JPY_CASH') stats.jpyCash += e.amt;
-                else if(e.method === 'TWD_CASH') stats.twdCash += e.amtTWD;
-                else if(e.method === 'CARD') stats.card += e.amtTWD;
+                stats.twdTotal += (e.amtTWD || 0);
+                if(e.method === 'JPY_CASH') stats.jpyCash += (e.amt || 0);
+                else if(e.method === 'TWD_CASH') stats.twdCash += (e.amtTWD || 0);
+                else if(e.method === 'CARD') stats.card += (e.amtTWD || 0);
 
-                if(e.payer === 'Ruby') stats.rubyPaid += e.amtTWD; else stats.wenPaid += e.amtTWD;
+                if(e.payer === 'Ruby') stats.rubyPaid += (e.amtTWD || 0); else stats.wenPaid += (e.amtTWD || 0);
                 
-                const count = e.splitWith.length;
+                const count = (e.splitWith || []).length;
                 if(count > 0) {
-                    const share = e.amtTWD / count;
+                    const share = (e.amtTWD || 0) / count;
                     if(e.splitWith.includes('Ruby')) stats.rubyShare += share;
                     if(e.splitWith.includes('Wen')) stats.wenShare += share;
                 }
@@ -241,28 +285,25 @@
 
             const rubyBal = stats.rubyPaid - stats.rubyShare;
 
-            // 3. 渲染報表
             reportDiv.innerHTML = `
                 <div class="text-center border-b pb-4">
                     <p class="text-xs text-stone-400 uppercase tracking-widest mb-1">🌍 旅程總支出 (TWD)</p>
                     <p class="text-4xl font-black text-[var(--jp-indigo)]">$${Math.round(stats.twdTotal).toLocaleString()}</p>
                 </div>
-
                 <div class="grid grid-cols-3 gap-2 text-center text-[10px]">
                     <div class="bg-orange-50 p-2 rounded">
-                        <p class="text-orange-600 font-bold mb-1">💴 日圓現金</p>
+                        <p class="text-orange-600 font-bold mb-1">💴 日圓現金計</p>
                         <p class="font-mono text-xs">¥${Math.round(stats.jpyCash).toLocaleString()}</p>
                     </div>
                     <div class="bg-blue-50 p-2 rounded">
-                        <p class="text-blue-600 font-bold mb-1">💵 台幣現金</p>
+                        <p class="text-blue-600 font-bold mb-1">💵 台幣現金計</p>
                         <p class="font-mono text-xs">$${Math.round(stats.twdCash).toLocaleString()}</p>
                     </div>
                     <div class="bg-purple-50 p-2 rounded">
-                        <p class="text-purple-600 font-bold mb-1">💳 刷卡付款</p>
+                        <p class="text-purple-600 font-bold mb-1">💳 刷卡計</p>
                         <p class="font-mono text-xs">$${Math.round(stats.card).toLocaleString()}</p>
                     </div>
                 </div>
-
                 <div class="space-y-3">
                     <div class="flex justify-between items-center text-sm p-3 bg-stone-50 rounded-lg">
                         <span>👩 Ruby 總墊款</span>
@@ -273,17 +314,16 @@
                         <span class="font-bold text-blue-600">$${Math.round(stats.wenPaid).toLocaleString()}</span>
                     </div>
                 </div>
-
                 <div class="mt-4 p-5 rounded-xl text-center border-2 border-[var(--jp-accent-red)] bg-rose-50 shadow-inner">
                     <p class="text-xs font-bold text-rose-800 mb-1">最終結算金額</p>
                     ${Math.abs(rubyBal) < 1 ? '<p class="font-bold">✨ 目前互不相欠</p>' : `
                         <p class="text-lg font-black text-rose-900">${rubyBal < 0 ? 'Ruby 應補給 Wen' : 'Wen 應補給 Ruby'}</p>
                         <p class="text-3xl font-black text-rose-600">$${Math.abs(Math.round(rubyBal)).toLocaleString()} <span class="text-sm">TWD</span></p>
                     `}
-                </div>
-            `;
+                </div>`;
         }
 
+        // 行程功能保持原樣
         window.addRow = () => {
             travelData.itinerary.push({ time: "09:00", trans: "🚶 步行", location: "新的地點", mapUrl: "", amount: 0, notes: "" });
             pushToCloud();
@@ -294,7 +334,6 @@
         };
         window.deleteRow = (idx) => { if(confirm("刪除？")) { travelData.itinerary.splice(idx, 1); pushToCloud(); } };
         window.updateRate = (v) => { travelData.rate = parseFloat(v); pushToCloud(); };
-
         function renderTable() {
             const tbody = document.getElementById('itineraryBody');
             tbody.innerHTML = travelData.itinerary.map((item, i) => `

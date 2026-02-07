@@ -23,11 +23,11 @@
         .tab-btn { padding: 12px 24px; font-weight: 600; cursor: pointer; transition: 0.3s; border-bottom: 3px solid transparent; }
         .active-tab { color: var(--jp-indigo); border-bottom: 3px solid var(--jp-indigo); }
         .mini-select { background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 4px; padding: 2px 4px; font-size: 11px; color: #4b5563; cursor: pointer; }
+        .mini-select:disabled { opacity: 0.7; cursor: default; background: transparent; border: none; -webkit-appearance: none; }
         
         /* 編輯模式樣式 */
         .editable-content { padding: 2px 4px; border-radius: 4px; transition: 0.2s; }
         .is-editing .editable-content { background: #fff9c4; border: 1px solid #facc15; outline: none; }
-        /* 日期輸入框微調 */
         .date-editor { background: transparent; border: none; font-size: 10px; color: #9ca3af; cursor: pointer; }
         .is-editing .date-editor { background: #fff9c4; color: #333; }
     </style>
@@ -60,7 +60,7 @@
                             </select>
                             <input type="number" id="expAmount" placeholder="金額" class="col-span-2 p-2 border rounded text-sm">
                         </div>
-                        <div class="grid grid-cols-2 gap-2 mb-4">
+                        <div class="grid grid-cols-2 gap-2 mb-2">
                             <select id="expMethod" class="p-2 border rounded bg-white text-sm">
                                 <option value="JPY_CASH">💴 日圓現金</option>
                                 <option value="TWD_CASH">💵 台幣現金</option>
@@ -71,6 +71,8 @@
                                 <option value="Wen">Wen 付款</option>
                             </select>
                         </div>
+                        <input type="text" id="expNote" placeholder="備註 (如：刷哪張卡、購買內容)" class="w-full p-2 border rounded text-sm mb-4">
+                        
                         <div class="bg-white p-3 rounded border border-stone-200 mb-4">
                             <p class="text-[10px] font-bold text-stone-400 mb-2 uppercase">預設分帳對象</p>
                             <div class="flex gap-4 text-sm">
@@ -159,6 +161,7 @@
             const currency = document.getElementById('expCurrency').value;
             const method = document.getElementById('expMethod').value;
             const payer = document.getElementById('expPayer').value;
+            const note = document.getElementById('expNote').value;
             const rate = travelData.rate || 0.22;
             const splitWith = [];
             if(document.getElementById('splitRuby').checked) splitWith.push('Ruby');
@@ -169,9 +172,10 @@
             let amtJPY = currency === 'JPY' ? amtRaw : Math.round(amtRaw / rate);
             let amtTWD = currency === 'TWD' ? amtRaw : Math.round(amtRaw * rate);
 
-            travelData.expenses.push({ id: Date.now(), date, name, amt: amtJPY, amtTWD: amtTWD, method, payer, splitWith });
+            travelData.expenses.push({ id: Date.now(), date, name, amt: amtJPY, amtTWD: amtTWD, method, payer, splitWith, note: note || "" });
             document.getElementById('expName').value = '';
             document.getElementById('expAmount').value = '';
+            document.getElementById('expNote').value = '';
             pushToCloud();
         };
 
@@ -179,29 +183,39 @@
             const card = document.getElementById(`exp-card-${id}`);
             const isEditing = card.classList.toggle('is-editing');
             const nameEl = card.querySelector('.name-val');
+            const noteEl = card.querySelector('.note-val');
             const twdEl = card.querySelector('.twd-val');
             const jpyEl = card.querySelector('.jpy-val');
             const dateEl = card.querySelector('.date-editor');
+            const selects = card.querySelectorAll('select');
+            const checkboxes = card.querySelectorAll('input[type="checkbox"]');
 
             if (isEditing) {
                 btn.innerHTML = '✅ 儲存';
                 btn.classList.replace('text-blue-500', 'text-green-600');
                 nameEl.contentEditable = true;
+                noteEl.contentEditable = true;
                 twdEl.contentEditable = true;
                 jpyEl.contentEditable = true;
                 dateEl.disabled = false;
+                selects.forEach(s => s.disabled = false);
+                checkboxes.forEach(c => c.disabled = false);
                 nameEl.focus();
             } else {
                 btn.innerHTML = '✏️ 編輯';
                 btn.classList.replace('text-green-600', 'text-blue-500');
                 nameEl.contentEditable = false;
+                noteEl.contentEditable = false;
                 twdEl.contentEditable = false;
                 jpyEl.contentEditable = false;
                 dateEl.disabled = true;
+                selects.forEach(s => s.disabled = true);
+                checkboxes.forEach(c => c.disabled = true);
                 
                 const idx = travelData.expenses.findIndex(e => e.id === id);
                 if(idx !== -1) {
                     travelData.expenses[idx].name = nameEl.innerText;
+                    travelData.expenses[idx].note = noteEl.innerText === '無備註' ? "" : noteEl.innerText;
                     travelData.expenses[idx].amtTWD = parseFloat(twdEl.innerText.replace(/[^\d.-]/g, '')) || 0;
                     travelData.expenses[idx].amt = parseFloat(jpyEl.innerText.replace(/[^\d.-]/g, '')) || 0;
                     travelData.expenses[idx].date = dateEl.value;
@@ -245,16 +259,15 @@
             }).map(e => `
                 <div id="exp-card-${e.id}" class="bg-white p-3 rounded shadow-sm border border-stone-100 text-sm">
                     <div class="flex justify-between items-start mb-2">
-                        <div class="flex flex-col">
+                        <div class="flex flex-col flex-1">
                             <span class="font-bold text-[var(--jp-indigo)] editable-content name-val">${e.name}</span>
-                            <div class="flex items-center gap-1 text-[10px] text-stone-400">
-                                📅 <input type="date" value="${e.date}" disabled 
-                                    class="date-editor" 
-                                    onchange="updateExpField(${e.id}, 'date', this.value)">
+                            <div class="flex flex-wrap items-center gap-2 text-[10px] text-stone-400 mt-1">
+                                <span class="flex items-center">📅 <input type="date" value="${e.date}" disabled class="date-editor ml-1" onchange="updateExpField(${e.id}, 'date', this.value)"></span>
+                                <span class="flex items-center bg-stone-100 px-1 rounded">📝 <span class="editable-content note-val min-w-[30px] inline-block ml-1">${e.note || '無備註'}</span></span>
                             </div>
                         </div>
-                        <div class="flex gap-3">
-                            <button onclick="toggleEditMode(this, ${e.id})" class="text-blue-500 text-xs font-bold">✏️ 編輯</button>
+                        <div class="flex gap-3 ml-2">
+                            <button onclick="toggleEditMode(this, ${e.id})" class="text-blue-500 text-xs font-bold whitespace-nowrap">✏️ 編輯</button>
                             <button onclick="deleteExpense(${e.id})" class="text-stone-300 hover:text-red-500">✕</button>
                         </div>
                     </div>
@@ -272,11 +285,11 @@
 
                     <div class="flex flex-wrap gap-2 justify-between items-center text-[11px]">
                         <div class="flex gap-2 items-center">
-                            <select onchange="updateExpField(${e.id}, 'payer', this.value)" class="mini-select">
+                            <select onchange="updateExpField(${e.id}, 'payer', this.value)" class="mini-select" disabled>
                                 <option value="Ruby" ${e.payer==='Ruby'?'selected':''}>Ruby 付</option>
                                 <option value="Wen" ${e.payer==='Wen'?'selected':''}>Wen 付</option>
                             </select>
-                            <select onchange="updateExpField(${e.id}, 'method', this.value)" class="mini-select">
+                            <select onchange="updateExpField(${e.id}, 'method', this.value)" class="mini-select" disabled>
                                 <option value="JPY_CASH" ${e.method==='JPY_CASH'?'selected':''}>💴 日圓現</option>
                                 <option value="TWD_CASH" ${e.method==='TWD_CASH'?'selected':''}>💵 台幣現</option>
                                 <option value="CARD" ${e.method==='CARD'?'selected':''}>💳 刷卡</option>
@@ -284,8 +297,8 @@
                         </div>
                         <div class="flex gap-2 bg-white px-2 py-1 rounded border border-stone-200">
                             <span class="text-stone-400">分帳:</span>
-                            <label class="cursor-pointer flex items-center gap-1"><input type="checkbox" ${(e.splitWith||[]).includes('Ruby')?'checked':''} onclick="toggleSplitMember(${e.id}, 'Ruby')"> R</label>
-                            <label class="cursor-pointer flex items-center gap-1"><input type="checkbox" ${(e.splitWith||[]).includes('Wen')?'checked':''} onclick="toggleSplitMember(${e.id}, 'Wen')"> W</label>
+                            <label class="cursor-pointer flex items-center gap-1"><input type="checkbox" disabled ${(e.splitWith||[]).includes('Ruby')?'checked':''} onclick="toggleSplitMember(${e.id}, 'Ruby')"> R</label>
+                            <label class="cursor-pointer flex items-center gap-1"><input type="checkbox" disabled ${(e.splitWith||[]).includes('Wen')?'checked':''} onclick="toggleSplitMember(${e.id}, 'Wen')"> W</label>
                         </div>
                     </div>
                 </div>
@@ -385,7 +398,7 @@
                 const jpy = e.amt || 0;
                 const count = (e.splitWith || []).length;
                 const mLabel = e.method === 'JPY_CASH' ? '💴' : (e.method === 'TWD_CASH' ? '💵' : '💳');
-                detailList += `▪️ ${e.date.slice(5)} ${e.name}: ${mLabel} ${e.method==='JPY_CASH'?jpy+'¥':twd+'$'}\n`;
+                detailList += `▪️ ${e.date.slice(5)} ${e.name}${e.note ? '('+e.note+')' : ''}: ${mLabel} ${e.method==='JPY_CASH'?jpy+'¥':twd+'$'}\n`;
                 if(e.method !== 'JPY_CASH') {
                     stats.total += twd;
                     if(e.payer === 'Ruby') stats.rPaid += twd; else stats.wPaid += twd;

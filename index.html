@@ -27,10 +27,9 @@
         /* 編輯模式樣式 */
         .editable-content { padding: 2px 4px; border-radius: 4px; transition: 0.2s; }
         .is-editing .editable-content { background: #fff9c4; border: 1px solid #facc15; outline: none; }
-        
-        /* 日期選擇器微調 */
-        .date-input-mini { background: transparent; font-size: 10px; color: #94a3b8; border: none; cursor: pointer; }
-        .is-editing .date-input-mini { background: #fff9c4; color: #333; }
+        /* 日期輸入框微調 */
+        .date-editor { background: transparent; border: none; font-size: 10px; color: #9ca3af; cursor: pointer; }
+        .is-editing .date-editor { background: #fff9c4; color: #333; }
     </style>
 </head>
 <body class="p-2 sm:p-8">
@@ -136,32 +135,23 @@
         const db = getDatabase(app);
         const travelRef = ref(db, 'trips/journey_data');
 
-        // 初始化資料結構
         let travelData = { itinerary: [], expenses: [], rate: 0.22 };
         document.getElementById('expDateInput').valueAsDate = new Date();
 
-        // 監聽雲端資料
         onValue(travelRef, (snapshot) => {
             const data = snapshot.val();
             if (data) {
                 travelData = data;
-                // 補齊可能缺失的陣列
                 if(!travelData.itinerary) travelData.itinerary = [];
                 if(!travelData.expenses) travelData.expenses = [];
-                if(!travelData.rate) travelData.rate = 0.22;
-                
                 document.getElementById('syncStatus').innerHTML = "🟢 雲端同步中";
                 renderTable();
                 renderExpenses();
             }
         });
 
-        // 推送至雲端
-        function pushToCloud() { 
-            set(travelRef, travelData); 
-        }
+        function pushToCloud() { set(travelRef, travelData); }
 
-        // --- 記帳功能 ---
         window.addExpense = () => {
             const date = document.getElementById('expDateInput').value;
             const name = document.getElementById('expName').value;
@@ -170,28 +160,16 @@
             const method = document.getElementById('expMethod').value;
             const payer = document.getElementById('expPayer').value;
             const rate = travelData.rate || 0.22;
-            
             const splitWith = [];
             if(document.getElementById('splitRuby').checked) splitWith.push('Ruby');
             if(document.getElementById('splitWen').checked) splitWith.push('Wen');
             
-            if(!name || isNaN(amtRaw) || !date) return alert("請輸入完整資訊");
+            if(!name || !amtRaw || !date) return alert("請輸入完整資訊");
 
             let amtJPY = currency === 'JPY' ? amtRaw : Math.round(amtRaw / rate);
             let amtTWD = currency === 'TWD' ? amtRaw : Math.round(amtRaw * rate);
 
-            travelData.expenses.push({ 
-                id: Date.now(), 
-                date, 
-                name, 
-                amt: amtJPY, 
-                amtTWD: amtTWD, 
-                method, 
-                payer, 
-                splitWith 
-            });
-
-            // 重置欄位
+            travelData.expenses.push({ id: Date.now(), date, name, amt: amtJPY, amtTWD: amtTWD, method, payer, splitWith });
             document.getElementById('expName').value = '';
             document.getElementById('expAmount').value = '';
             pushToCloud();
@@ -203,7 +181,7 @@
             const nameEl = card.querySelector('.name-val');
             const twdEl = card.querySelector('.twd-val');
             const jpyEl = card.querySelector('.jpy-val');
-            const dateInput = card.querySelector('.date-val');
+            const dateEl = card.querySelector('.date-editor');
 
             if (isEditing) {
                 btn.innerHTML = '✅ 儲存';
@@ -211,7 +189,7 @@
                 nameEl.contentEditable = true;
                 twdEl.contentEditable = true;
                 jpyEl.contentEditable = true;
-                dateInput.disabled = false;
+                dateEl.disabled = false;
                 nameEl.focus();
             } else {
                 btn.innerHTML = '✏️ 編輯';
@@ -219,14 +197,14 @@
                 nameEl.contentEditable = false;
                 twdEl.contentEditable = false;
                 jpyEl.contentEditable = false;
-                dateInput.disabled = true;
+                dateEl.disabled = true;
                 
                 const idx = travelData.expenses.findIndex(e => e.id === id);
                 if(idx !== -1) {
                     travelData.expenses[idx].name = nameEl.innerText;
                     travelData.expenses[idx].amtTWD = parseFloat(twdEl.innerText.replace(/[^\d.-]/g, '')) || 0;
                     travelData.expenses[idx].amt = parseFloat(jpyEl.innerText.replace(/[^\d.-]/g, '')) || 0;
-                    travelData.expenses[idx].date = dateInput.value;
+                    travelData.expenses[idx].date = dateEl.value;
                     pushToCloud();
                 }
             }
@@ -254,12 +232,7 @@
             }
         };
 
-        window.deleteExpense = (id) => { 
-            if(confirm("確定刪除？")) { 
-                travelData.expenses = travelData.expenses.filter(e => e.id !== id); 
-                pushToCloud(); 
-            } 
-        };
+        window.deleteExpense = (id) => { if(confirm("確定刪除？")) { travelData.expenses = travelData.expenses.filter(e => e.id !== id); pushToCloud(); } };
 
         function renderExpenses() {
             const historyDiv = document.getElementById('expenseHistory');
@@ -274,9 +247,10 @@
                     <div class="flex justify-between items-start mb-2">
                         <div class="flex flex-col">
                             <span class="font-bold text-[var(--jp-indigo)] editable-content name-val">${e.name}</span>
-                            <div class="flex items-center gap-1">
-                                <span class="text-[10px] text-stone-400">📅</span>
-                                <input type="date" value="${e.date}" disabled class="date-input-mini date-val" onchange="updateExpField(${e.id}, 'date', this.value)">
+                            <div class="flex items-center gap-1 text-[10px] text-stone-400">
+                                📅 <input type="date" value="${e.date}" disabled 
+                                    class="date-editor" 
+                                    onchange="updateExpField(${e.id}, 'date', this.value)">
                             </div>
                         </div>
                         <div class="flex gap-3">
@@ -317,86 +291,76 @@
                 </div>
             `).join('') || '<p class="text-center text-stone-400 py-8 italic">目前尚無支出紀錄</p>';
 
-            // 統計邏輯整合
-            let stats = { displayTotal: 0, rPaid: 0, wPaid: 0, rShare: 0, wShare: 0, rPersT: 0, wPersT: 0, rPersJ: 0, wPersJ: 0 };
-            exps.forEach(e => {
-                const twd = parseFloat(e.amtTWD) || 0; 
-                const jpy = parseFloat(e.amt) || 0; 
-                const splitArray = e.splitWith || [];
-                const count = splitArray.length;
+            let stats = { displayTotal: 0, rubyPaidNonJpy: 0, wenPaidNonJpy: 0, rubyShareNonJpy: 0, wenShareNonJpy: 0, rubyPersonalTwd: 0, wenPersonalTwd: 0, rubyPersonalJpy: 0, wenPersonalJpy: 0 };
 
-                if(e.method !== 'JPY_CASH') {
-                    // 只有台幣支出（現金/刷卡）計入結算
-                    stats.displayTotal += twd;
-                    if(e.payer === 'Ruby') stats.rPaid += twd; else stats.wPaid += twd;
-                    
+            exps.forEach(e => {
+                const twdAmt = (e.amtTWD || 0);
+                const jpyAmt = (e.amt || 0);
+                const count = (e.splitWith || []).length;
+                if(e.method === 'JPY_CASH') {
                     if(count > 0) {
-                        const sh = twd / count;
-                        if(splitArray.includes('Ruby')) { stats.rShare += sh; stats.rPersT += sh; }
-                        if(splitArray.includes('Wen')) { stats.wShare += sh; stats.wPersT += sh; }
+                        const personalJpyShare = jpyAmt / count;
+                        if(e.splitWith.includes('Ruby')) stats.rubyPersonalJpy += personalJpyShare;
+                        if(e.splitWith.includes('Wen')) stats.wenPersonalJpy += personalJpyShare;
                     }
                 } else {
-                    // 日圓現金只計入個人統計，不參與台幣欠款結算
+                    stats.displayTotal += twdAmt;
+                    if(e.payer === 'Ruby') stats.rubyPaidNonJpy += twdAmt; else stats.wenPaidNonJpy += twdAmt;
                     if(count > 0) {
-                        const jSh = jpy / count;
-                        if(splitArray.includes('Ruby')) stats.rPersJ += jSh;
-                        if(splitArray.includes('Wen')) stats.wPersJ += jSh;
+                        const share = twdAmt / count;
+                        if(e.splitWith.includes('Ruby')) { stats.rubyShareNonJpy += share; stats.rubyPersonalTwd += share; }
+                        if(e.splitWith.includes('Wen')) { stats.wenShareNonJpy += share; stats.wenPersonalTwd += share; }
                     }
                 }
             });
 
-            const rubyBal = stats.rPaid - stats.rShare;
+            const rubyBal = stats.rubyPaidNonJpy - stats.rubyShareNonJpy;
+
             reportDiv.innerHTML = `
                 <div class="text-center border-b pb-4">
                     <p class="text-xs text-stone-400 uppercase tracking-widest mb-1">🌍 旅程總支出 (台幣現+刷卡)</p>
                     <p class="text-4xl font-black text-[var(--jp-indigo)]">$${Math.round(stats.displayTotal).toLocaleString()}</p>
                 </div>
                 <div class="bg-stone-50 p-4 rounded-lg border border-stone-100">
+                    <p class="text-[10px] font-bold text-stone-400 mb-2 uppercase text-center">👤 個人花費總額 (不含日圓)</p>
                     <div class="grid grid-cols-2 gap-4">
-                        <div class="text-center"><p class="text-xs text-rose-600 font-medium">Ruby 台幣</p><p class="text-lg font-bold text-stone-700">$${Math.round(stats.rPersT).toLocaleString()}</p></div>
-                        <div class="text-center border-l"><p class="text-xs text-blue-600 font-medium">Wen 台幣</p><p class="text-lg font-bold text-stone-700">$${Math.round(stats.wPersT).toLocaleString()}</p></div>
+                        <div class="text-center">
+                            <p class="text-xs text-rose-600 font-medium">Ruby</p>
+                            <p class="text-lg font-bold text-stone-700">$${Math.round(stats.rubyPersonalTwd).toLocaleString()}</p>
+                        </div>
+                        <div class="text-center border-l">
+                            <p class="text-xs text-blue-600 font-medium">Wen</p>
+                            <p class="text-lg font-bold text-stone-700">$${Math.round(stats.wenPersonalTwd).toLocaleString()}</p>
+                        </div>
                     </div>
                 </div>
                 <div class="bg-orange-50/50 p-4 rounded-lg border border-orange-100">
+                    <p class="text-[10px] font-bold text-orange-400 mb-2 uppercase text-center">💴 個人日圓花費 (現金項目)</p>
                     <div class="grid grid-cols-2 gap-4">
-                        <div class="text-center"><p class="text-[10px] text-orange-700">Ruby 日圓</p><p class="text-lg font-bold text-orange-900">¥${Math.round(stats.rPersJ).toLocaleString()}</p></div>
-                        <div class="text-center border-l border-orange-200"><p class="text-[10px] text-orange-700">Wen 日圓</p><p class="text-lg font-bold text-orange-900">¥${Math.round(stats.wPersJ).toLocaleString()}</p></div>
+                        <div class="text-center">
+                            <p class="text-[10px] text-orange-700">Ruby (¥)</p>
+                            <p class="text-lg font-mono font-bold text-orange-900">¥${Math.round(stats.rubyPersonalJpy).toLocaleString()}</p>
+                        </div>
+                        <div class="text-center border-l border-orange-200">
+                            <p class="text-[10px] text-orange-700">Wen (¥)</p>
+                            <p class="text-lg font-mono font-bold text-orange-900">¥${Math.round(stats.wenPersonalJpy).toLocaleString()}</p>
+                        </div>
                     </div>
                 </div>
                 <div class="mt-4 p-5 rounded-xl text-center border-2 border-[var(--jp-accent-red)] bg-rose-50 shadow-inner">
                     <p class="text-xs font-bold text-rose-800 mb-1">最終結算金額 (排除日圓現金)</p>
                     ${Math.abs(rubyBal) < 1 ? '<p class="font-bold">✨ 目前互不相欠</p>' : `
                         <p class="text-lg font-black text-rose-900">${rubyBal < 0 ? 'Ruby 應補給 Wen' : 'Wen 應補給 Ruby'}</p>
-                        <p class="text-3xl font-black text-rose-600">$${Math.abs(Math.round(rubyBal)).toLocaleString()}</p>
+                        <p class="text-3xl font-black text-rose-600">$${Math.abs(Math.round(rubyBal)).toLocaleString()} <span class="text-sm">TWD</span></p>
                     `}
                 </div>
             `;
         }
 
-        // --- 行程功能 ---
-        window.addRow = () => { 
-            travelData.itinerary.push({ 
-                time: "09:00", trans: "🚶 步行", location: "新的地點", mapUrl: "", amount: 0, notes: "" 
-            }); 
-            pushToCloud(); 
-        };
-        
-        window.updateCell = (idx, field, val) => { 
-            travelData.itinerary[idx][field] = field === 'amount' ? (parseFloat(val) || 0) : val; 
-            pushToCloud(); 
-        };
-        
-        window.deleteRow = (idx) => { 
-            if(confirm("確定刪除行程？")) { 
-                travelData.itinerary.splice(idx, 1); 
-                pushToCloud(); 
-            } 
-        };
-        
-        window.updateRate = (v) => { 
-            travelData.rate = parseFloat(v) || 0.22; 
-            pushToCloud(); 
-        };
+        window.addRow = () => { travelData.itinerary.push({ time: "09:00", trans: "🚶 步行", location: "新的地點", mapUrl: "", amount: 0, notes: "" }); pushToCloud(); };
+        window.updateCell = (idx, field, val) => { travelData.itinerary[idx][field] = field === 'amount' ? parseFloat(val) || 0 : val; pushToCloud(); };
+        window.deleteRow = (idx) => { if(confirm("刪除？")) { travelData.itinerary.splice(idx, 1); pushToCloud(); } };
+        window.updateRate = (v) => { travelData.rate = parseFloat(v); pushToCloud(); };
 
         function renderTable() {
             const tbody = document.getElementById('itineraryBody');
@@ -409,54 +373,41 @@
                     <td class="table-cell text-right"><input type="number" value="${item.amount}" class="text-right w-16 bg-transparent" onblur="updateCell(${i}, 'amount', this.value)"></td>
                     <td class="table-cell text-center"><button onclick="deleteRow(${i})" class="text-stone-300">✕</button></td>
                 </tr>`).join('');
-            document.getElementById('rateInput').value = travelData.rate;
+            document.getElementById('rateInput').value = travelData.rate || 0.22;
         }
 
-        // --- 匯出功能 ---
         window.exportToText = () => {
             const exps = travelData.expenses || [];
             let stats = { total: 0, rPaid: 0, wPaid: 0, rShare: 0, wShare: 0, rPersT: 0, wPersT: 0, rPersJ: 0, wPersJ: 0 };
             let detailList = "";
-
             exps.sort((a,b) => new Date(a.date) - new Date(b.date)).forEach(e => {
-                const twd = parseFloat(e.amtTWD) || 0; 
-                const jpy = parseFloat(e.amt) || 0; 
-                const splitArray = e.splitWith || [];
-                const count = splitArray.length;
+                const twd = e.amtTWD || 0;
+                const jpy = e.amt || 0;
+                const count = (e.splitWith || []).length;
                 const mLabel = e.method === 'JPY_CASH' ? '💴' : (e.method === 'TWD_CASH' ? '💵' : '💳');
-                
-                detailList += `▪️ ${e.date.slice(5)} ${e.name}: ${mLabel} ${e.method==='JPY_CASH' ? jpy+'¥' : twd+'$'}\n`;
-                
+                detailList += `▪️ ${e.date.slice(5)} ${e.name}: ${mLabel} ${e.method==='JPY_CASH'?jpy+'¥':twd+'$'}\n`;
                 if(e.method !== 'JPY_CASH') {
-                    stats.total += twd; 
+                    stats.total += twd;
                     if(e.payer === 'Ruby') stats.rPaid += twd; else stats.wPaid += twd;
                     if(count > 0) {
                         const sh = twd / count;
-                        if(splitArray.includes('Ruby')) { stats.rShare += sh; stats.rPersT += sh; }
-                        if(splitArray.includes('Wen')) { stats.wShare += sh; stats.wPersT += sh; }
+                        if(e.splitWith.includes('Ruby')) { stats.rShare += sh; stats.rPersT += sh; }
+                        if(e.splitWith.includes('Wen')) { stats.wShare += sh; stats.wPersT += sh; }
                     }
                 } else {
                     if(count > 0) {
                         const jSh = jpy / count;
-                        if(splitArray.includes('Ruby')) stats.rPersJ += jSh;
-                        if(splitArray.includes('Wen')) stats.wPersJ += jSh;
+                        if(e.splitWith.includes('Ruby')) stats.rPersJ += jSh;
+                        if(e.splitWith.includes('Wen')) stats.wPersJ += jSh;
                     }
                 }
             });
-
             const bal = Math.round(stats.rPaid - stats.rShare);
             const report = `🧸 旅費結算報表 (不含日圓現)\n---\n🌍 總支出：$${Math.round(stats.total)}\n🙋 Ruby 墊：$${Math.round(stats.rPaid)}\n🙋 Wen 墊：$${Math.round(stats.wPaid)}\n---\n📊 結果：${bal < 0 ? 'Ruby 補給 Wen' : 'Wen 補給 Ruby'} $${Math.abs(bal)}\n---\n👤 個人花費總計：\nRuby: $${Math.round(stats.rPersT)} / ¥${Math.round(stats.rPersJ)}\nWen: $${Math.round(stats.wPersT)} / ¥${Math.round(stats.wPersJ)}\n---\n📋 支出明細匯出：\n${detailList || "尚無明細"}`;
-            
-            navigator.clipboard.writeText(report).then(() => alert("報表已複製到剪貼簿！"));
+            navigator.clipboard.writeText(report).then(() => alert("已複製完整報表與明細！"));
         };
 
-        window.clearAllExpenses = () => { 
-            if(confirm("確定全部清空帳單？此動作無法復原。")) { 
-                travelData.expenses = []; 
-                pushToCloud(); 
-            } 
-        };
-
+        window.clearAllExpenses = () => { if(confirm("確定全部清空？")) { travelData.expenses = []; pushToCloud(); } };
         window.switchPage = (p) => {
             document.getElementById('itinerary-page').classList.toggle('hidden', p !== 'itinerary');
             document.getElementById('split-page').classList.toggle('hidden', p !== 'split');

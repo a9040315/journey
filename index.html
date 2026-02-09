@@ -28,9 +28,18 @@
         .is-editing .editable-content { background: #fff9c4; border: 1px solid #facc15; outline: none; }
         .date-editor { background: transparent; border: none; font-size: 10px; color: #9ca3af; cursor: pointer; }
         .is-editing .date-editor { background: #fff9c4; color: #333; }
-        /* 箭頭按鈕樣式 */
-        .move-btn { color: #d1d5db; transition: 0.2s; padding: 2px; line-height: 1; display: block; }
-        .move-btn:hover { color: var(--jp-indigo); background: #f3f4f6; border-radius: 4px; }
+        
+        /* 修正後的按鈕樣式 */
+        .move-btn { 
+            color: #4b5563; 
+            transition: 0.2s; 
+            padding: 4px; 
+            line-height: 1; 
+            display: block; 
+            font-size: 12px;
+            text-align: center;
+        }
+        .move-btn:hover { color: var(--jp-indigo); background: #e5e7eb; border-radius: 4px; }
     </style>
 </head>
 <body class="p-2 sm:p-8">
@@ -148,12 +157,25 @@
         let travelData = { itinerary: [], expenses: [], rate: 0.22 };
         document.getElementById('expDateInput').valueAsDate = new Date();
 
+        // 核心：讀取資料並自動補齊 sortOrder
         onValue(travelRef, (snapshot) => {
             const data = snapshot.val();
             if (data) {
+                let needsUpdate = false;
                 travelData = data;
                 if(!travelData.itinerary) travelData.itinerary = [];
                 if(!travelData.expenses) travelData.expenses = [];
+                
+                // 檢查是否有舊資料需要補 sortOrder
+                travelData.expenses.forEach((e, idx) => {
+                    if (e.sortOrder === undefined) {
+                        e.sortOrder = idx;
+                        needsUpdate = true;
+                    }
+                });
+
+                if(needsUpdate) pushToCloud(); // 補完欄位後同步回雲端
+
                 document.getElementById('syncStatus').innerHTML = "🟢 雲端同步中";
                 updateDateFilterOptions();
                 renderTable();
@@ -165,6 +187,7 @@
 
         function updateDateFilterOptions() {
             const filter = document.getElementById('dateFilter');
+            if(!filter) return;
             const currentVal = filter.value;
             const dates = [...new Set(travelData.expenses.map(e => e.date))].sort((a,b) => new Date(b) - new Date(a));
             let html = '<option value="all">📅 全部日期</option>';
@@ -194,9 +217,8 @@
             let amtJPY = currency === 'JPY' ? amtRaw : Math.round(amtRaw / rate);
             let amtTWD = currency === 'TWD' ? amtRaw : Math.round(amtRaw * rate);
 
-            // 同日期排序權重：找出現有同日期最大的 sortOrder
             const sameDayExps = travelData.expenses.filter(e => e.date === date);
-            const maxOrder = sameDayExps.reduce((max, e) => Math.max(max, e.sortOrder || 0), 0);
+            const maxOrder = sameDayExps.reduce((max, e) => Math.max(max, e.sortOrder || 0), -1);
 
             travelData.expenses.push({ 
                 id: Date.now(), 
@@ -211,22 +233,21 @@
             pushToCloud();
         };
 
-        // 移動順序功能：在 travelData.expenses 原始陣列中修改 sortOrder
+        // 移動順序功能
         window.moveExpense = (id, direction) => {
             const exp = travelData.expenses.find(e => e.id === id);
             if (!exp) return;
 
-            // 找出同一天的所有項目並排序
+            // 抓出同日期項目，依 sortOrder 排序 (大到小，呈現上由上而下)
             const sameDayExps = travelData.expenses
                 .filter(e => e.date === exp.date)
-                .sort((a, b) => (b.sortOrder || 0) - (a.sortOrder || 0)); // 由大到小 (視覺上由上到下)
+                .sort((a, b) => (b.sortOrder || 0) - (a.sortOrder || 0));
 
             const currentIdx = sameDayExps.findIndex(e => e.id === id);
-            const targetIdx = currentIdx + direction;
+            const targetIdx = currentIdx - direction; // 因為大到小，所以減 direction
 
             if (targetIdx >= 0 && targetIdx < sameDayExps.length) {
                 const targetExp = sameDayExps[targetIdx];
-                // 交換兩個項目的 sortOrder
                 const tempOrder = exp.sortOrder || 0;
                 exp.sortOrder = targetExp.sortOrder || 0;
                 targetExp.sortOrder = tempOrder;
@@ -234,69 +255,13 @@
             }
         };
 
-        window.toggleEditMode = (btn, id) => {
-            const card = document.getElementById(`exp-card-${id}`);
-            const isEditing = card.classList.toggle('is-editing');
-            const nameEl = card.querySelector('.name-val');
-            const noteEl = card.querySelector('.note-val');
-            const twdEl = card.querySelector('.twd-val');
-            const jpyEl = card.querySelector('.jpy-val');
-            const dateEl = card.querySelector('.date-editor');
-            const selects = card.querySelectorAll('select');
-            const checkboxes = card.querySelectorAll('input[type="checkbox"]');
-
-            if (isEditing) {
-                btn.innerHTML = '✅ 儲存';
-                btn.classList.replace('text-blue-500', 'text-green-600');
-                nameEl.contentEditable = true; noteEl.contentEditable = true;
-                twdEl.contentEditable = true; jpyEl.contentEditable = true;
-                dateEl.disabled = false;
-                selects.forEach(s => s.disabled = false); checkboxes.forEach(c => c.disabled = false);
-                nameEl.focus();
-            } else {
-                btn.innerHTML = '✏️ 編輯';
-                btn.classList.replace('text-green-600', 'text-blue-500');
-                nameEl.contentEditable = false; noteEl.contentEditable = false;
-                twdEl.contentEditable = false; jpyEl.contentEditable = false;
-                dateEl.disabled = true;
-                selects.forEach(s => s.disabled = true); checkboxes.forEach(c => c.disabled = true);
-                
-                const idx = travelData.expenses.findIndex(e => e.id === id);
-                if(idx !== -1) {
-                    travelData.expenses[idx].name = nameEl.innerText;
-                    travelData.expenses[idx].note = noteEl.innerText === '無備註' ? "" : noteEl.innerText;
-                    travelData.expenses[idx].amtTWD = parseFloat(twdEl.innerText.replace(/[^\d.-]/g, '')) || 0;
-                    travelData.expenses[idx].amt = parseFloat(jpyEl.innerText.replace(/[^\d.-]/g, '')) || 0;
-                    travelData.expenses[idx].date = dateEl.value;
-                    pushToCloud();
-                }
-            }
-        };
-
-        window.updateExpField = (id, field, val) => {
-            const idx = travelData.expenses.findIndex(e => e.id === id);
-            if(idx !== -1) { travelData.expenses[idx][field] = val; pushToCloud(); }
-        };
-
-        window.toggleSplitMember = (id, member) => {
-            const idx = travelData.expenses.findIndex(e => e.id === id);
-            if(idx !== -1) {
-                let current = travelData.expenses[idx].splitWith || [];
-                current = current.includes(member) ? current.filter(m => m !== member) : [...current, member];
-                travelData.expenses[idx].splitWith = current;
-                pushToCloud();
-            }
-        };
-
-        window.deleteExpense = (id) => { if(confirm("確定刪除？")) { travelData.expenses = travelData.expenses.filter(e => e.id !== id); pushToCloud(); } };
-
         window.renderExpenses = () => {
             const historyDiv = document.getElementById('expenseHistory');
             const reportDiv = document.getElementById('settlementReport');
             const filterDate = document.getElementById('dateFilter').value;
             const exps = travelData.expenses || [];
 
-            // 核心排序：1.日期大到小 2.sortOrder大到小
+            // 排序：1.日期 2.sortOrder
             const sortedExps = exps.slice().sort((a,b) => {
                 if (b.date !== a.date) return new Date(b.date) - new Date(a.date);
                 return (b.sortOrder || 0) - (a.sortOrder || 0);
@@ -309,8 +274,8 @@
                     <div class="flex justify-between items-start mb-2">
                         <div class="flex items-start gap-3 flex-1">
                             <div class="flex flex-col bg-stone-50 rounded border border-stone-200 p-0.5">
-                                <button onclick="moveExpense(${e.id}, -1)" class="move-btn" title="上移">▲</button>
-                                <button onclick="moveExpense(${e.id}, 1)" class="move-btn" title="下移">▼</button>
+                                <button onclick="moveExpense(${e.id}, 1)" class="move-btn" title="上移">▲</button>
+                                <button onclick="moveExpense(${e.id}, -1)" class="move-btn" title="下移">▼</button>
                             </div>
                             <div class="flex flex-col flex-1">
                                 <span class="font-bold text-[var(--jp-indigo)] editable-content name-val">${e.name}</span>
@@ -359,7 +324,7 @@
                 </div>
             `).join('') || '<p class="text-center text-stone-400 py-8 italic">目前尚無支出紀錄</p>';
 
-            // 統計邏輯 (保持原樣)
+            // 統計邏輯
             let stats = { displayTotal: 0, rPaid: 0, wPaid: 0, rShare: 0, wShare: 0, rJpy: 0, wJpy: 0, rBuyTwd: 0, wBuyTwd: 0, rBuyJpy: 0, wBuyJpy: 0, rPersTwd: 0, wPersTwd: 0 };
             exps.forEach(e => {
                 const twd = e.amtTWD || 0; const jpy = e.amt || 0; const split = e.splitWith || [];
@@ -407,7 +372,65 @@
                 </div>`;
         };
 
-        // 行程管理 (保持原樣)
+        // 其餘編輯功能維持原樣
+        window.toggleEditMode = (btn, id) => {
+            const card = document.getElementById(`exp-card-${id}`);
+            const isEditing = card.classList.toggle('is-editing');
+            const fields = {
+                name: card.querySelector('.name-val'),
+                note: card.querySelector('.note-val'),
+                twd: card.querySelector('.twd-val'),
+                jpy: card.querySelector('.jpy-val'),
+                date: card.querySelector('.date-editor'),
+                selects: card.querySelectorAll('select'),
+                checks: card.querySelectorAll('input[type="checkbox"]')
+            };
+
+            if (isEditing) {
+                btn.innerHTML = '✅ 儲存';
+                btn.classList.replace('text-blue-500', 'text-green-600');
+                fields.name.contentEditable = fields.note.contentEditable = fields.twd.contentEditable = fields.jpy.contentEditable = true;
+                fields.date.disabled = false;
+                fields.selects.forEach(s => s.disabled = false);
+                fields.checks.forEach(c => c.disabled = false);
+                fields.name.focus();
+            } else {
+                btn.innerHTML = '✏️ 編輯';
+                btn.classList.replace('text-green-600', 'text-blue-500');
+                fields.name.contentEditable = fields.note.contentEditable = fields.twd.contentEditable = fields.jpy.contentEditable = false;
+                fields.date.disabled = true;
+                fields.selects.forEach(s => s.disabled = true);
+                fields.checks.forEach(c => c.disabled = true);
+                
+                const idx = travelData.expenses.findIndex(e => e.id === id);
+                if(idx !== -1) {
+                    travelData.expenses[idx].name = fields.name.innerText;
+                    travelData.expenses[idx].note = fields.note.innerText === '無備註' ? "" : fields.note.innerText;
+                    travelData.expenses[idx].amtTWD = parseFloat(fields.twd.innerText.replace(/[^\d.-]/g, '')) || 0;
+                    travelData.expenses[idx].amt = parseFloat(fields.jpy.innerText.replace(/[^\d.-]/g, '')) || 0;
+                    travelData.expenses[idx].date = fields.date.value;
+                    pushToCloud();
+                }
+            }
+        };
+
+        window.updateExpField = (id, field, val) => {
+            const idx = travelData.expenses.findIndex(e => e.id === id);
+            if(idx !== -1) { travelData.expenses[idx][field] = val; pushToCloud(); }
+        };
+
+        window.toggleSplitMember = (id, member) => {
+            const idx = travelData.expenses.findIndex(e => e.id === id);
+            if(idx !== -1) {
+                let current = travelData.expenses[idx].splitWith || [];
+                current = current.includes(member) ? current.filter(m => m !== member) : [...current, member];
+                travelData.expenses[idx].splitWith = current;
+                pushToCloud();
+            }
+        };
+
+        window.deleteExpense = (id) => { if(confirm("確定刪除？")) { travelData.expenses = travelData.expenses.filter(e => e.id !== id); pushToCloud(); } };
+
         window.addRow = () => { travelData.itinerary.push({ time: "09:00", trans: "🚶 步行", location: "新點", mapUrl: "", amount: 0 }); pushToCloud(); };
         window.updateCell = (idx, field, val) => { travelData.itinerary[idx][field] = field === 'amount' ? parseFloat(val) || 0 : val; pushToCloud(); };
         window.deleteRow = (idx) => { if(confirm("刪除？")) { travelData.itinerary.splice(idx, 1); pushToCloud(); } };

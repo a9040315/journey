@@ -84,7 +84,12 @@
                     </div>
 
                     <div>
-                        <h3 class="font-bold mb-2 border-b pb-1 text-sm text-stone-500">支出明細 (含代購)</h3>
+                        <div class="flex justify-between items-center mb-2 border-b pb-1">
+                            <h3 class="font-bold text-sm text-stone-500">支出明細 (含代購)</h3>
+                            <select id="dateFilter" onchange="renderExpenses()" class="text-[11px] border rounded px-2 py-1 bg-white text-stone-600">
+                                <option value="all">📅 全部日期</option>
+                            </select>
+                        </div>
                         <div id="expenseHistory" class="space-y-2 max-h-[600px] overflow-y-auto pr-1"></div>
                     </div>
                 </div>
@@ -147,12 +152,27 @@
                 if(!travelData.itinerary) travelData.itinerary = [];
                 if(!travelData.expenses) travelData.expenses = [];
                 document.getElementById('syncStatus').innerHTML = "🟢 雲端同步中";
+                updateDateFilterOptions(); // 更新日期選單
                 renderTable();
                 renderExpenses();
             }
         });
 
         function pushToCloud() { set(travelRef, travelData); }
+
+        // 新增：更新日期篩選選單的選項
+        function updateDateFilterOptions() {
+            const filter = document.getElementById('dateFilter');
+            const currentVal = filter.value;
+            const dates = [...new Set(travelData.expenses.map(e => e.date))].sort((a,b) => new Date(b) - new Date(a));
+            
+            let html = '<option value="all">📅 全部日期</option>';
+            dates.forEach(d => {
+                html += `<option value="${d}">${d}</option>`;
+            });
+            filter.innerHTML = html;
+            filter.value = currentVal;
+        }
 
         window.addExpense = () => {
             const date = document.getElementById('expDateInput').value;
@@ -255,12 +275,16 @@
 
         window.deleteExpense = (id) => { if(confirm("確定刪除？")) { travelData.expenses = travelData.expenses.filter(e => e.id !== id); pushToCloud(); } };
 
-        function renderExpenses() {
+        window.renderExpenses = () => {
             const historyDiv = document.getElementById('expenseHistory');
             const reportDiv = document.getElementById('settlementReport');
+            const filterDate = document.getElementById('dateFilter').value;
             const exps = travelData.expenses || [];
 
-            historyDiv.innerHTML = exps.slice().sort((a,b) => {
+            // 篩選與渲染支出明細
+            const filteredExps = filterDate === 'all' ? exps : exps.filter(e => e.date === filterDate);
+
+            historyDiv.innerHTML = filteredExps.slice().sort((a,b) => {
                 if (b.date !== a.date) return new Date(b.date) - new Date(a.date);
                 return b.id - a.id;
             }).map(e => `
@@ -313,15 +337,15 @@
                 </div>
             `).join('') || '<p class="text-center text-stone-400 py-8 italic">目前尚無支出紀錄</p>';
 
-            // 統計邏輯
+            // 統計邏輯 (統計依然以全體數據為準，確保結算正確)
             let stats = { 
                 displayTotal: 0, 
                 rubyPaidNonJpy: 0, wenPaidNonJpy: 0, 
                 rubyShareNonJpy: 0, wenShareNonJpy: 0, 
                 rubyPersonalTwd: 0, wenPersonalTwd: 0, 
                 rubyPersonalJpy: 0, wenPersonalJpy: 0,
-                rBuyTwd: 0, wBuyTwd: 0, // 代購台幣統計
-                rBuyJpy: 0, wBuyJpy: 0  // 代購日圓統計
+                rBuyTwd: 0, wBuyTwd: 0,
+                rBuyJpy: 0, wBuyJpy: 0 
             };
 
             exps.forEach(e => {
@@ -334,7 +358,6 @@
                     const shareTwd = twdAmt / count;
                     const shareJpy = jpyAmt / count;
 
-                    // 1. 處理公帳與個人台幣/刷卡 (不含日圓現金)
                     if(e.method !== 'JPY_CASH') {
                         stats.displayTotal += twdAmt;
                         if(e.payer === 'Ruby') stats.rubyPaidNonJpy += twdAmt; else stats.wenPaidNonJpy += twdAmt;
@@ -344,7 +367,6 @@
                         if(splitList.includes('R代購')) { stats.rBuyTwd += shareTwd; stats.rubyShareNonJpy += shareTwd; }
                         if(splitList.includes('W代購')) { stats.wBuyTwd += shareTwd; stats.wenShareNonJpy += shareTwd; }
                     } else {
-                        // 2. 處理日圓現金 (純個人或代購統計)
                         if(splitList.includes('Ruby')) stats.rubyPersonalJpy += shareJpy;
                         if(splitList.includes('Wen')) stats.wenPersonalJpy += shareJpy;
                         if(splitList.includes('R代購')) stats.rBuyJpy += shareJpy;
@@ -399,7 +421,7 @@
         window.deleteRow = (idx) => { if(confirm("刪除？")) { travelData.itinerary.splice(idx, 1); pushToCloud(); } };
         window.updateRate = (v) => { travelData.rate = parseFloat(v); pushToCloud(); };
 
-        function renderTable() {
+        window.renderTable = () => {
             const tbody = document.getElementById('itineraryBody');
             tbody.innerHTML = travelData.itinerary.map((item, i) => `
                 <tr class="hover:bg-stone-50 border-b text-sm">

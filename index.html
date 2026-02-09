@@ -152,7 +152,7 @@
                 if(!travelData.itinerary) travelData.itinerary = [];
                 if(!travelData.expenses) travelData.expenses = [];
                 document.getElementById('syncStatus').innerHTML = "🟢 雲端同步中";
-                updateDateFilterOptions(); // 更新日期選單
+                updateDateFilterOptions(); 
                 renderTable();
                 renderExpenses();
             }
@@ -160,7 +160,6 @@
 
         function pushToCloud() { set(travelRef, travelData); }
 
-        // 新增：更新日期篩選選單的選項
         function updateDateFilterOptions() {
             const filter = document.getElementById('dateFilter');
             const currentVal = filter.value;
@@ -195,15 +194,29 @@
             let amtJPY = currency === 'JPY' ? amtRaw : Math.round(amtRaw / rate);
             let amtTWD = currency === 'TWD' ? amtRaw : Math.round(amtRaw * rate);
 
+            // 新增時放在陣列最後
             travelData.expenses.push({ id: Date.now(), date, name, amt: amtJPY, amtTWD: amtTWD, method, payer, splitWith, note: note || "" });
             
-            // 重設欄位
             document.getElementById('expName').value = '';
             document.getElementById('expAmount').value = '';
             document.getElementById('expNote').value = '';
             document.getElementById('splitRBuy').checked = false;
             document.getElementById('splitWBuy').checked = false;
             pushToCloud();
+        };
+
+        // 新增：調整支出順序功能
+        window.moveExpense = (id, direction) => {
+            const idx = travelData.expenses.findIndex(e => e.id === id);
+            if (idx === -1) return;
+            
+            const newIdx = idx + direction;
+            if (newIdx >= 0 && newIdx < travelData.expenses.length) {
+                const temp = travelData.expenses[idx];
+                travelData.expenses[idx] = travelData.expenses[newIdx];
+                travelData.expenses[newIdx] = temp;
+                pushToCloud();
+            }
         };
 
         window.toggleEditMode = (btn, id) => {
@@ -281,13 +294,14 @@
             const filterDate = document.getElementById('dateFilter').value;
             const exps = travelData.expenses || [];
 
-            // 篩選與渲染支出明細
-            const filteredExps = filterDate === 'all' ? exps : exps.filter(e => e.date === filterDate);
+            // 渲染列表：若篩選「全部」則顯示移動按鈕，若篩選特定日期則隱藏移動按鈕避免排序混亂
+            const displayExps = filterDate === 'all' ? exps : exps.filter(e => e.date === filterDate);
 
-            historyDiv.innerHTML = filteredExps.slice().sort((a,b) => {
-                if (b.date !== a.date) return new Date(b.date) - new Date(a.date);
-                return b.id - a.id;
-            }).map(e => `
+            historyDiv.innerHTML = displayExps.slice().reverse().map((e) => {
+                const originalIndex = travelData.expenses.findIndex(item => item.id === e.id);
+                const isAll = filterDate === 'all';
+                
+                return `
                 <div id="exp-card-${e.id}" class="bg-white p-3 rounded shadow-sm border border-stone-100 text-sm">
                     <div class="flex justify-between items-start mb-2">
                         <div class="flex flex-col flex-1">
@@ -297,7 +311,13 @@
                                 <span class="flex items-center bg-stone-100 px-1 rounded">📝 <span class="editable-content note-val min-w-[30px] inline-block ml-1">${e.note || '無備註'}</span></span>
                             </div>
                         </div>
-                        <div class="flex gap-3 ml-2">
+                        <div class="flex gap-2 ml-2 items-center">
+                            ${isAll ? `
+                                <div class="flex flex-col gap-1 mr-2">
+                                    <button onclick="moveExpense(${e.id}, 1)" class="text-stone-400 hover:text-indigo-500 text-[10px]">🔼</button>
+                                    <button onclick="moveExpense(${e.id}, -1)" class="text-stone-400 hover:text-indigo-500 text-[10px]">🔽</button>
+                                </div>
+                            ` : ''}
                             <button onclick="toggleEditMode(this, ${e.id})" class="text-blue-500 text-xs font-bold whitespace-nowrap">✏️ 編輯</button>
                             <button onclick="deleteExpense(${e.id})" class="text-stone-300 hover:text-red-500">✕</button>
                         </div>
@@ -335,9 +355,8 @@
                         </div>
                     </div>
                 </div>
-            `).join('') || '<p class="text-center text-stone-400 py-8 italic">目前尚無支出紀錄</p>';
+            `}).join('') || '<p class="text-center text-stone-400 py-8 italic">目前尚無支出紀錄</p>';
 
-            // 統計邏輯 (統計依然以全體數據為準，確保結算正確)
             let stats = { 
                 displayTotal: 0, 
                 rubyPaidNonJpy: 0, wenPaidNonJpy: 0, 

@@ -85,7 +85,7 @@
 
                     <div>
                         <div class="flex justify-between items-center mb-2 border-b pb-1">
-                            <h3 class="font-bold text-sm text-stone-500">支出明細 (按日期排序)</h3>
+                            <h3 class="font-bold text-sm text-stone-500">支出明細 (含代購)</h3>
                             <select id="dateFilter" onchange="renderExpenses()" class="text-[11px] border rounded px-2 py-1 bg-white text-stone-600">
                                 <option value="all">📅 全部日期</option>
                             </select>
@@ -152,7 +152,7 @@
                 if(!travelData.itinerary) travelData.itinerary = [];
                 if(!travelData.expenses) travelData.expenses = [];
                 document.getElementById('syncStatus').innerHTML = "🟢 雲端同步中";
-                updateDateFilterOptions(); 
+                updateDateFilterOptions(); // 更新日期選單
                 renderTable();
                 renderExpenses();
             }
@@ -160,10 +160,11 @@
 
         function pushToCloud() { set(travelRef, travelData); }
 
+        // 新增：更新日期篩選選單的選項
         function updateDateFilterOptions() {
             const filter = document.getElementById('dateFilter');
             const currentVal = filter.value;
-            const dates = [...new Set(travelData.expenses.map(e => e.date))].sort((a,b) => new Date(a) - new Date(b));
+            const dates = [...new Set(travelData.expenses.map(e => e.date))].sort((a,b) => new Date(b) - new Date(a));
             
             let html = '<option value="all">📅 全部日期</option>';
             dates.forEach(d => {
@@ -196,25 +197,13 @@
 
             travelData.expenses.push({ id: Date.now(), date, name, amt: amtJPY, amtTWD: amtTWD, method, payer, splitWith, note: note || "" });
             
+            // 重設欄位
             document.getElementById('expName').value = '';
             document.getElementById('expAmount').value = '';
             document.getElementById('expNote').value = '';
             document.getElementById('splitRBuy').checked = false;
             document.getElementById('splitWBuy').checked = false;
             pushToCloud();
-        };
-
-        window.moveExpense = (id, direction) => {
-            const idx = travelData.expenses.findIndex(e => e.id === id);
-            if (idx === -1) return;
-            
-            const newIdx = idx + direction;
-            if (newIdx >= 0 && newIdx < travelData.expenses.length) {
-                const temp = travelData.expenses[idx];
-                travelData.expenses[idx] = travelData.expenses[newIdx];
-                travelData.expenses[newIdx] = temp;
-                pushToCloud();
-            }
         };
 
         window.toggleEditMode = (btn, id) => {
@@ -290,20 +279,15 @@
             const historyDiv = document.getElementById('expenseHistory');
             const reportDiv = document.getElementById('settlementReport');
             const filterDate = document.getElementById('dateFilter').value;
-            
-            // 修正排序邏輯：按日期從舊到新，移除最後的 .reverse()
-            const exps = [...(travelData.expenses || [])];
-            exps.sort((a, b) => {
-                if (a.date !== b.date) return new Date(a.date) - new Date(b.date);
-                return 0; 
-            });
+            const exps = travelData.expenses || [];
 
-            const displayExps = filterDate === 'all' ? exps : exps.filter(e => e.date === filterDate);
+            // 篩選與渲染支出明細
+            const filteredExps = filterDate === 'all' ? exps : exps.filter(e => e.date === filterDate);
 
-            // 渲染列表 (不再 reverse)
-            historyDiv.innerHTML = displayExps.map((e) => {
-                const isAll = filterDate === 'all';
-                return `
+            historyDiv.innerHTML = filteredExps.slice().sort((a,b) => {
+                if (b.date !== a.date) return new Date(b.date) - new Date(a.date);
+                return b.id - a.id;
+            }).map(e => `
                 <div id="exp-card-${e.id}" class="bg-white p-3 rounded shadow-sm border border-stone-100 text-sm">
                     <div class="flex justify-between items-start mb-2">
                         <div class="flex flex-col flex-1">
@@ -313,13 +297,7 @@
                                 <span class="flex items-center bg-stone-100 px-1 rounded">📝 <span class="editable-content note-val min-w-[30px] inline-block ml-1">${e.note || '無備註'}</span></span>
                             </div>
                         </div>
-                        <div class="flex gap-2 ml-2 items-center">
-                            ${isAll ? `
-                                <div class="flex flex-col gap-1 mr-2">
-                                    <button onclick="moveExpense(${e.id}, -1)" class="text-stone-400 hover:text-indigo-500 text-[10px]">🔼</button>
-                                    <button onclick="moveExpense(${e.id}, 1)" class="text-stone-400 hover:text-indigo-500 text-[10px]">🔽</button>
-                                </div>
-                            ` : ''}
+                        <div class="flex gap-3 ml-2">
                             <button onclick="toggleEditMode(this, ${e.id})" class="text-blue-500 text-xs font-bold whitespace-nowrap">✏️ 編輯</button>
                             <button onclick="deleteExpense(${e.id})" class="text-stone-300 hover:text-red-500">✕</button>
                         </div>
@@ -357,9 +335,9 @@
                         </div>
                     </div>
                 </div>
-                `).join('') || '<p class="text-center text-stone-400 py-8 italic">目前尚無支出紀錄</p>';
+            `).join('') || '<p class="text-center text-stone-400 py-8 italic">目前尚無支出紀錄</p>';
 
-            // 統計邏輯保持原樣
+            // 統計邏輯 (統計依然以全體數據為準，確保結算正確)
             let stats = { 
                 displayTotal: 0, 
                 rubyPaidNonJpy: 0, wenPaidNonJpy: 0, 
@@ -370,7 +348,7 @@
                 rBuyJpy: 0, wBuyJpy: 0 
             };
 
-            travelData.expenses.forEach(e => {
+            exps.forEach(e => {
                 const twdAmt = (e.amtTWD || 0);
                 const jpyAmt = (e.amt || 0);
                 const splitList = e.splitWith || [];
@@ -458,11 +436,10 @@
         }
 
         window.exportToText = () => {
-            const exps = [...(travelData.expenses || [])];
-            exps.sort((a,b) => new Date(a.date) - new Date(b.date));
+            const exps = travelData.expenses || [];
             let stats = { total: 0, rPaid: 0, wPaid: 0, rShare: 0, wShare: 0 };
             let detailList = "";
-            exps.forEach(e => {
+            exps.sort((a,b) => new Date(a.date) - new Date(b.date)).forEach(e => {
                 const twd = e.amtTWD || 0;
                 const jpy = e.amt || 0;
                 const splitList = e.splitWith || [];

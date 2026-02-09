@@ -85,7 +85,7 @@
 
                     <div>
                         <div class="flex justify-between items-center mb-2 border-b pb-1">
-                            <h3 class="font-bold text-sm text-stone-500">支出明細 (含代購)</h3>
+                            <h3 class="font-bold text-sm text-stone-500">支出明細 (按日期排序)</h3>
                             <select id="dateFilter" onchange="renderExpenses()" class="text-[11px] border rounded px-2 py-1 bg-white text-stone-600">
                                 <option value="all">📅 全部日期</option>
                             </select>
@@ -163,7 +163,7 @@
         function updateDateFilterOptions() {
             const filter = document.getElementById('dateFilter');
             const currentVal = filter.value;
-            const dates = [...new Set(travelData.expenses.map(e => e.date))].sort((a,b) => new Date(b) - new Date(a));
+            const dates = [...new Set(travelData.expenses.map(e => e.date))].sort((a,b) => new Date(a) - new Date(b));
             
             let html = '<option value="all">📅 全部日期</option>';
             dates.forEach(d => {
@@ -194,7 +194,6 @@
             let amtJPY = currency === 'JPY' ? amtRaw : Math.round(amtRaw / rate);
             let amtTWD = currency === 'TWD' ? amtRaw : Math.round(amtRaw * rate);
 
-            // 新增時放在陣列最後
             travelData.expenses.push({ id: Date.now(), date, name, amt: amtJPY, amtTWD: amtTWD, method, payer, splitWith, note: note || "" });
             
             document.getElementById('expName').value = '';
@@ -205,7 +204,6 @@
             pushToCloud();
         };
 
-        // 新增：調整支出順序功能
         window.moveExpense = (id, direction) => {
             const idx = travelData.expenses.findIndex(e => e.id === id);
             if (idx === -1) return;
@@ -292,15 +290,19 @@
             const historyDiv = document.getElementById('expenseHistory');
             const reportDiv = document.getElementById('settlementReport');
             const filterDate = document.getElementById('dateFilter').value;
-            const exps = travelData.expenses || [];
+            const exps = [...(travelData.expenses || [])];
 
-            // 渲染列表：若篩選「全部」則顯示移動按鈕，若篩選特定日期則隱藏移動按鈕避免排序混亂
+            // 1. 邏輯調整：先按日期從「小到大」排序，同日則按陣列原本索引順序
+            exps.sort((a, b) => {
+                if (a.date !== b.date) return new Date(a.date) - new Date(b.date);
+                // 同日期保持原始陣列順序
+                return 0; 
+            });
+
             const displayExps = filterDate === 'all' ? exps : exps.filter(e => e.date === filterDate);
 
-            historyDiv.innerHTML = displayExps.slice().reverse().map((e) => {
-                const originalIndex = travelData.expenses.findIndex(item => item.id === e.id);
+            historyDiv.innerHTML = displayExps.map((e) => {
                 const isAll = filterDate === 'all';
-                
                 return `
                 <div id="exp-card-${e.id}" class="bg-white p-3 rounded shadow-sm border border-stone-100 text-sm">
                     <div class="flex justify-between items-start mb-2">
@@ -314,8 +316,8 @@
                         <div class="flex gap-2 ml-2 items-center">
                             ${isAll ? `
                                 <div class="flex flex-col gap-1 mr-2">
-                                    <button onclick="moveExpense(${e.id}, 1)" class="text-stone-400 hover:text-indigo-500 text-[10px]">🔼</button>
-                                    <button onclick="moveExpense(${e.id}, -1)" class="text-stone-400 hover:text-indigo-500 text-[10px]">🔽</button>
+                                    <button onclick="moveExpense(${e.id}, -1)" class="text-stone-400 hover:text-indigo-500 text-[10px]">🔼</button>
+                                    <button onclick="moveExpense(${e.id}, 1)" class="text-stone-400 hover:text-indigo-500 text-[10px]">🔽</button>
                                 </div>
                             ` : ''}
                             <button onclick="toggleEditMode(this, ${e.id})" class="text-blue-500 text-xs font-bold whitespace-nowrap">✏️ 編輯</button>
@@ -355,7 +357,7 @@
                         </div>
                     </div>
                 </div>
-            `}).join('') || '<p class="text-center text-stone-400 py-8 italic">目前尚無支出紀錄</p>';
+            `).join('') || '<p class="text-center text-stone-400 py-8 italic">目前尚無支出紀錄</p>';
 
             let stats = { 
                 displayTotal: 0, 
@@ -367,7 +369,7 @@
                 rBuyJpy: 0, wBuyJpy: 0 
             };
 
-            exps.forEach(e => {
+            travelData.expenses.forEach(e => {
                 const twdAmt = (e.amtTWD || 0);
                 const jpyAmt = (e.amt || 0);
                 const splitList = e.splitWith || [];
@@ -455,10 +457,11 @@
         }
 
         window.exportToText = () => {
-            const exps = travelData.expenses || [];
+            const exps = [...(travelData.expenses || [])];
+            exps.sort((a,b) => new Date(a.date) - new Date(b.date));
             let stats = { total: 0, rPaid: 0, wPaid: 0, rShare: 0, wShare: 0 };
             let detailList = "";
-            exps.sort((a,b) => new Date(a.date) - new Date(b.date)).forEach(e => {
+            exps.forEach(e => {
                 const twd = e.amtTWD || 0;
                 const jpy = e.amt || 0;
                 const splitList = e.splitWith || [];

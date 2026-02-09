@@ -28,6 +28,8 @@
         .is-editing .editable-content { background: #fff9c4; border: 1px solid #facc15; outline: none; }
         .date-editor { background: transparent; border: none; font-size: 10px; color: #9ca3af; cursor: pointer; }
         .is-editing .date-editor { background: #fff9c4; color: #333; }
+        .move-btn { color: #9ca3af; transition: 0.2s; padding: 0 2px; }
+        .move-btn:hover { color: var(--jp-indigo); }
     </style>
 </head>
 <body class="p-2 sm:p-8">
@@ -152,7 +154,7 @@
                 if(!travelData.itinerary) travelData.itinerary = [];
                 if(!travelData.expenses) travelData.expenses = [];
                 document.getElementById('syncStatus').innerHTML = "🟢 雲端同步中";
-                updateDateFilterOptions(); // 更新日期選單
+                updateDateFilterOptions();
                 renderTable();
                 renderExpenses();
             }
@@ -160,7 +162,6 @@
 
         function pushToCloud() { set(travelRef, travelData); }
 
-        // 新增：更新日期篩選選單的選項
         function updateDateFilterOptions() {
             const filter = document.getElementById('dateFilter');
             const currentVal = filter.value;
@@ -195,15 +196,48 @@
             let amtJPY = currency === 'JPY' ? amtRaw : Math.round(amtRaw / rate);
             let amtTWD = currency === 'TWD' ? amtRaw : Math.round(amtRaw * rate);
 
-            travelData.expenses.push({ id: Date.now(), date, name, amt: amtJPY, amtTWD: amtTWD, method, payer, splitWith, note: note || "" });
+            // 為了方便同日排序，加入一個 sortOrder 欄位
+            const maxOrder = travelData.expenses.reduce((max, e) => e.date === date ? Math.max(max, e.sortOrder || 0) : max, 0);
+
+            travelData.expenses.push({ 
+                id: Date.now(), 
+                date, name, 
+                amt: amtJPY, 
+                amtTWD: amtTWD, 
+                method, payer, 
+                splitWith, 
+                note: note || "",
+                sortOrder: maxOrder + 1 
+            });
             
-            // 重設欄位
             document.getElementById('expName').value = '';
             document.getElementById('expAmount').value = '';
             document.getElementById('expNote').value = '';
             document.getElementById('splitRBuy').checked = false;
             document.getElementById('splitWBuy').checked = false;
             pushToCloud();
+        };
+
+        // 新增：同日期移動順序功能
+        window.moveExpense = (id, direction) => {
+            const sortedList = travelData.expenses.slice().sort((a,b) => {
+                if (a.date !== b.date) return new Date(b.date) - new Date(a.date);
+                return (b.sortOrder || 0) - (a.sortOrder || 0);
+            });
+            
+            const idx = sortedList.findIndex(e => e.id === id);
+            if (idx === -1) return;
+
+            const current = sortedList[idx];
+            const target = sortedList[idx + direction];
+
+            // 只有同日期的才能互相換位置
+            if (target && target.date === current.date) {
+                const tempOrder = current.sortOrder;
+                current.sortOrder = target.sortOrder;
+                target.sortOrder = tempOrder;
+                pushToCloud();
+            }
         };
 
         window.toggleEditMode = (btn, id) => {
@@ -281,17 +315,25 @@
             const filterDate = document.getElementById('dateFilter').value;
             const exps = travelData.expenses || [];
 
-            // 篩選與渲染支出明細
-            const filteredExps = filterDate === 'all' ? exps : exps.filter(e => e.date === filterDate);
-
-            historyDiv.innerHTML = filteredExps.slice().sort((a,b) => {
+            // 先排序：日期大到小，同日期則根據 sortOrder 大到小
+            const sortedExps = exps.slice().sort((a,b) => {
                 if (b.date !== a.date) return new Date(b.date) - new Date(a.date);
-                return b.id - a.id;
-            }).map(e => `
+                return (b.sortOrder || 0) - (a.sortOrder || 0);
+            });
+
+            const filteredExps = filterDate === 'all' ? sortedExps : sortedExps.filter(e => e.date === filterDate);
+
+            historyDiv.innerHTML = filteredExps.map((e, idx) => `
                 <div id="exp-card-${e.id}" class="bg-white p-3 rounded shadow-sm border border-stone-100 text-sm">
                     <div class="flex justify-between items-start mb-2">
                         <div class="flex flex-col flex-1">
-                            <span class="font-bold text-[var(--jp-indigo)] editable-content name-val">${e.name}</span>
+                            <div class="flex items-center gap-2">
+                                <div class="flex flex-col">
+                                    <button onclick="moveExpense(${e.id}, -1)" class="move-btn text-[10px]">▲</button>
+                                    <button onclick="moveExpense(${e.id}, 1)" class="move-btn text-[10px]">▼</button>
+                                </div>
+                                <span class="font-bold text-[var(--jp-indigo)] editable-content name-val">${e.name}</span>
+                            </div>
                             <div class="flex flex-wrap items-center gap-2 text-[10px] text-stone-400 mt-1">
                                 <span class="flex items-center">📅 <input type="date" value="${e.date}" disabled class="date-editor ml-1" onchange="updateExpField(${e.id}, 'date', this.value)"></span>
                                 <span class="flex items-center bg-stone-100 px-1 rounded">📝 <span class="editable-content note-val min-w-[30px] inline-block ml-1">${e.note || '無備註'}</span></span>
@@ -337,16 +379,8 @@
                 </div>
             `).join('') || '<p class="text-center text-stone-400 py-8 italic">目前尚無支出紀錄</p>';
 
-            // 統計邏輯 (統計依然以全體數據為準，確保結算正確)
-            let stats = { 
-                displayTotal: 0, 
-                rubyPaidNonJpy: 0, wenPaidNonJpy: 0, 
-                rubyShareNonJpy: 0, wenShareNonJpy: 0, 
-                rubyPersonalTwd: 0, wenPersonalTwd: 0, 
-                rubyPersonalJpy: 0, wenPersonalJpy: 0,
-                rBuyTwd: 0, wBuyTwd: 0,
-                rBuyJpy: 0, wBuyJpy: 0 
-            };
+            // 統計邏輯
+            let stats = { displayTotal: 0, rubyPaidNonJpy: 0, wenPaidNonJpy: 0, rubyShareNonJpy: 0, wenShareNonJpy: 0, rubyPersonalTwd: 0, wenPersonalTwd: 0, rubyPersonalJpy: 0, wenPersonalJpy: 0, rBuyTwd: 0, wBuyTwd: 0, rBuyJpy: 0, wBuyJpy: 0 };
 
             exps.forEach(e => {
                 const twdAmt = (e.amtTWD || 0);
@@ -357,11 +391,9 @@
                 if(count > 0) {
                     const shareTwd = twdAmt / count;
                     const shareJpy = jpyAmt / count;
-
                     if(e.method !== 'JPY_CASH') {
                         stats.displayTotal += twdAmt;
                         if(e.payer === 'Ruby') stats.rubyPaidNonJpy += twdAmt; else stats.wenPaidNonJpy += twdAmt;
-                        
                         if(splitList.includes('Ruby')) { stats.rubyShareNonJpy += shareTwd; stats.rubyPersonalTwd += shareTwd; }
                         if(splitList.includes('Wen')) { stats.wenShareNonJpy += shareTwd; stats.wenPersonalTwd += shareTwd; }
                         if(splitList.includes('R代購')) { stats.rBuyTwd += shareTwd; stats.rubyShareNonJpy += shareTwd; }
@@ -376,7 +408,6 @@
             });
 
             const rubyBal = stats.rubyPaidNonJpy - stats.rubyShareNonJpy;
-
             reportDiv.innerHTML = `
                 <div class="text-center border-b pb-4">
                     <p class="text-xs text-stone-400 uppercase tracking-widest mb-1">🌍 旅程總支出 (公帳+代購)</p>
@@ -386,7 +417,6 @@
                         <span>Wen 已墊: $${Math.round(stats.wenPaidNonJpy).toLocaleString()}</span>
                     </div>
                 </div>
-
                 <div class="grid grid-cols-2 gap-4">
                     <div class="bg-stone-50 p-3 rounded-lg border border-stone-100">
                         <p class="text-[10px] font-bold text-stone-400 mb-2 uppercase text-center">👤 Ruby 應負擔</p>
@@ -405,15 +435,13 @@
                         </div>
                     </div>
                 </div>
-
                 <div class="mt-4 p-5 rounded-xl text-center border-2 border-[var(--jp-accent-red)] bg-rose-50 shadow-inner">
                     <p class="text-xs font-bold text-rose-800 mb-1">最終結算金額 (含代購, 排除日圓現)</p>
                     ${Math.abs(rubyBal) < 1 ? '<p class="font-bold">✨ 目前互不相欠</p>' : `
                         <p class="text-lg font-black text-rose-900">${rubyBal < 0 ? 'Ruby 應補給 Wen' : 'Wen 應補給 Ruby'}</p>
                         <p class="text-3xl font-black text-rose-600">$${Math.abs(Math.round(rubyBal)).toLocaleString()} <span class="text-sm">TWD</span></p>
                     `}
-                </div>
-            `;
+                </div>`;
         }
 
         window.addRow = () => { travelData.itinerary.push({ time: "09:00", trans: "🚶 步行", location: "新的地點", mapUrl: "", amount: 0, notes: "" }); pushToCloud(); };
@@ -439,15 +467,16 @@
             const exps = travelData.expenses || [];
             let stats = { total: 0, rPaid: 0, wPaid: 0, rShare: 0, wShare: 0 };
             let detailList = "";
-            exps.sort((a,b) => new Date(a.date) - new Date(b.date)).forEach(e => {
+            exps.slice().sort((a,b) => {
+                if (a.date !== b.date) return new Date(a.date) - new Date(b.date);
+                return (a.sortOrder || 0) - (b.sortOrder || 0);
+            }).forEach(e => {
                 const twd = e.amtTWD || 0;
                 const jpy = e.amt || 0;
                 const splitList = e.splitWith || [];
                 const count = splitList.length;
                 const mLabel = e.method === 'JPY_CASH' ? '💴' : (e.method === 'TWD_CASH' ? '💵' : '💳');
-                
                 detailList += `▪️ ${e.date.slice(5)} ${e.name}: ${mLabel} ${e.method==='JPY_CASH'?jpy+'¥':twd+'$'} (${splitList.join('/')})\n`;
-                
                 if(e.method !== 'JPY_CASH' && count > 0) {
                     stats.total += twd;
                     if(e.payer === 'Ruby') stats.rPaid += twd; else stats.wPaid += twd;

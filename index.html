@@ -333,6 +333,11 @@
                 <div class="text-center border-b pb-4">
                     <p class="text-xs text-stone-400 uppercase tracking-widest mb-1">🌍 旅程總支出 (台幣現+刷卡)</p>
                     <p class="text-4xl font-black text-[var(--jp-indigo)]">$${Math.round(stats.displayTotal).toLocaleString()}</p>
+                    
+                    <div class="flex justify-center gap-4 mt-2 text-[10px] font-bold text-stone-500">
+                        <span>Ruby 已代墊: $${Math.round(stats.rubyPaidNonJpy).toLocaleString()}</span>
+                        <span>Wen 已代墊: $${Math.round(stats.wenPaidNonJpy).toLocaleString()}</span>
+                    </div>
                 </div>
                 <div class="bg-stone-50 p-4 rounded-lg border border-stone-100">
                     <p class="text-[10px] font-bold text-stone-400 mb-2 uppercase text-center">👤 個人花費總額 (不含日圓)</p>

@@ -290,17 +290,17 @@
             const historyDiv = document.getElementById('expenseHistory');
             const reportDiv = document.getElementById('settlementReport');
             const filterDate = document.getElementById('dateFilter').value;
+            
+            // 修正排序邏輯：按日期從舊到新，移除最後的 .reverse()
             const exps = [...(travelData.expenses || [])];
-
-            // 1. 邏輯調整：先按日期從「小到大」排序，同日則按陣列原本索引順序
             exps.sort((a, b) => {
                 if (a.date !== b.date) return new Date(a.date) - new Date(b.date);
-                // 同日期保持原始陣列順序
                 return 0; 
             });
 
             const displayExps = filterDate === 'all' ? exps : exps.filter(e => e.date === filterDate);
 
+            // 渲染列表 (不再 reverse)
             historyDiv.innerHTML = displayExps.map((e) => {
                 const isAll = filterDate === 'all';
                 return `
@@ -357,8 +357,9 @@
                         </div>
                     </div>
                 </div>
-            `).join('') || '<p class="text-center text-stone-400 py-8 italic">目前尚無支出紀錄</p>';
+                `).join('') || '<p class="text-center text-stone-400 py-8 italic">目前尚無支出紀錄</p>';
 
+            // 統計邏輯保持原樣
             let stats = { 
                 displayTotal: 0, 
                 rubyPaidNonJpy: 0, wenPaidNonJpy: 0, 

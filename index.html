@@ -84,7 +84,12 @@
                     </div>
 
                     <div>
-                        <h3 class="font-bold mb-2 border-b pb-1 text-sm text-stone-500">支出明細 (含代購)</h3>
+                        <div class="flex justify-between items-center mb-2 border-b pb-1">
+                            <h3 class="font-bold text-sm text-stone-500">支出明細 (含代購)</h3>
+                            <select id="dateFilter" onchange="renderExpenses()" class="text-[10px] bg-stone-100 border rounded px-1 outline-none">
+                                <option value="all">📅 全部日期</option>
+                            </select>
+                        </div>
                         <div id="expenseHistory" class="space-y-2 max-h-[600px] overflow-y-auto pr-1"></div>
                     </div>
                 </div>
@@ -177,7 +182,6 @@
 
             travelData.expenses.push({ id: Date.now(), date, name, amt: amtJPY, amtTWD: amtTWD, method, payer, splitWith, note: note || "" });
             
-            // 重設欄位
             document.getElementById('expName').value = '';
             document.getElementById('expAmount').value = '';
             document.getElementById('expNote').value = '';
@@ -258,9 +262,21 @@
         function renderExpenses() {
             const historyDiv = document.getElementById('expenseHistory');
             const reportDiv = document.getElementById('settlementReport');
+            const dateFilter = document.getElementById('dateFilter');
             const exps = travelData.expenses || [];
 
-            historyDiv.innerHTML = exps.slice().sort((a,b) => {
+            // 更新日期篩選下拉選單選項
+            const selectedDate = dateFilter.value;
+            const allDates = [...new Set(exps.map(e => e.date))].sort((a, b) => new Date(b) - new Date(a));
+            dateFilter.innerHTML = '<option value="all">📅 全部日期</option>' + 
+                allDates.map(d => `<option value="${d}" ${selectedDate === d ? 'selected' : ''}>${d}</option>`).join('');
+
+            // 根據篩選值過濾要顯示的明細
+            const filteredExps = selectedDate === 'all' 
+                ? exps 
+                : exps.filter(e => e.date === selectedDate);
+
+            historyDiv.innerHTML = filteredExps.slice().sort((a,b) => {
                 if (b.date !== a.date) return new Date(b.date) - new Date(a.date);
                 return b.id - a.id;
             }).map(e => `
@@ -311,17 +327,17 @@
                         </div>
                     </div>
                 </div>
-            `).join('') || '<p class="text-center text-stone-400 py-8 italic">目前尚無支出紀錄</p>';
+            `).join('') || '<p class="text-center text-stone-400 py-8 italic">目前尚無符合條件的支出</p>';
 
-            // 統計邏輯
+            // 統計邏輯 (基於所有原始資料 exps)
             let stats = { 
                 displayTotal: 0, 
                 rubyPaidNonJpy: 0, wenPaidNonJpy: 0, 
                 rubyShareNonJpy: 0, wenShareNonJpy: 0, 
                 rubyPersonalTwd: 0, wenPersonalTwd: 0, 
                 rubyPersonalJpy: 0, wenPersonalJpy: 0,
-                rBuyTwd: 0, wBuyTwd: 0, // 代購台幣統計
-                rBuyJpy: 0, wBuyJpy: 0  // 代購日圓統計
+                rBuyTwd: 0, wBuyTwd: 0,
+                rBuyJpy: 0, wBuyJpy: 0  
             };
 
             exps.forEach(e => {
@@ -334,7 +350,6 @@
                     const shareTwd = twdAmt / count;
                     const shareJpy = jpyAmt / count;
 
-                    // 1. 處理公帳與個人台幣/刷卡 (不含日圓現金)
                     if(e.method !== 'JPY_CASH') {
                         stats.displayTotal += twdAmt;
                         if(e.payer === 'Ruby') stats.rubyPaidNonJpy += twdAmt; else stats.wenPaidNonJpy += twdAmt;
@@ -344,7 +359,6 @@
                         if(splitList.includes('R代購')) { stats.rBuyTwd += shareTwd; stats.rubyShareNonJpy += shareTwd; }
                         if(splitList.includes('W代購')) { stats.wBuyTwd += shareTwd; stats.wenShareNonJpy += shareTwd; }
                     } else {
-                        // 2. 處理日圓現金 (純個人或代購統計)
                         if(splitList.includes('Ruby')) stats.rubyPersonalJpy += shareJpy;
                         if(splitList.includes('Wen')) stats.wenPersonalJpy += shareJpy;
                         if(splitList.includes('R代購')) stats.rBuyJpy += shareJpy;

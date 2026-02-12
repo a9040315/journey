@@ -72,7 +72,6 @@
                             </select>
                         </div>
                         <input type="text" id="expNote" placeholder="備註" class="w-full p-2 border rounded text-sm mb-4">
-                        
                         <div class="bg-white p-3 rounded border border-stone-200 mb-4">
                             <p class="text-[10px] font-bold text-stone-400 mb-2 uppercase">分帳或代購對象</p>
                             <div class="flex flex-wrap gap-4 text-sm">
@@ -84,7 +83,6 @@
                         </div>
                         <button onclick="addExpense()" class="w-full bg-[var(--jp-bamboo)] text-white py-2 rounded-lg font-bold shadow-md hover:opacity-90">加入帳單</button>
                     </div>
-
                     <div>
                         <div class="flex justify-between items-center mb-2 border-b pb-1">
                             <h3 class="font-bold text-sm text-stone-500">支出明細 (按日期排序)</h3>
@@ -95,7 +93,6 @@
                         <div id="expenseHistory" class="space-y-2 max-h-[600px] overflow-y-auto pr-1"></div>
                     </div>
                 </div>
-
                 <div class="space-y-6">
                     <div id="settlementReport" class="bg-white p-6 rounded-xl border-2 border-[var(--jp-indigo)] shadow-lg space-y-6"></div>
                     <div class="grid grid-cols-2 gap-2">
@@ -129,7 +126,6 @@
     <script type="module">
         import { initializeApp } from "firebase/app";
         import { getDatabase, ref, set, onValue } from "firebase/database";
-
         const firebaseConfig = {
             apiKey: "AIzaSyB3x-4mcHCIjbrqxQKrMiw_McjzDKLJRM",
             authDomain: "journey-b926c.firebaseapp.com",
@@ -139,11 +135,9 @@
             messagingSenderId: "45463991790",
             appId: "1:45463991790:web:c5315240a49d2fdcf50aff"
         };
-
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
         const travelRef = ref(db, 'trips/journey_data');
-
         let travelData = { itinerary: [], expenses: [], rate: 0.22 };
         document.getElementById('expDateInput').valueAsDate = new Date();
 
@@ -154,19 +148,14 @@
                 travelData = data;
                 if(!travelData.itinerary) travelData.itinerary = [];
                 if(!travelData.expenses) travelData.expenses = [];
-                travelData.expenses.forEach((e, idx) => {
-                    if (e.sortOrder === undefined) { e.sortOrder = idx; needsUpdate = true; }
-                });
+                travelData.expenses.forEach((e, idx) => { if (e.sortOrder === undefined) { e.sortOrder = idx; needsUpdate = true; } });
                 if(needsUpdate) pushToCloud();
                 document.getElementById('syncStatus').innerHTML = "🟢 雲端同步中";
-                updateDateFilterOptions();
-                renderTable();
-                renderExpenses();
+                updateDateFilterOptions(); renderTable(); renderExpenses();
             }
         });
 
         function pushToCloud() { set(travelRef, travelData); }
-
         function updateDateFilterOptions() {
             const filter = document.getElementById('dateFilter');
             if(!filter) return;
@@ -174,8 +163,7 @@
             const dates = [...new Set(travelData.expenses.map(e => e.date))].sort((a,b) => new Date(b) - new Date(a));
             let html = '<option value="all">📅 全部日期</option>';
             dates.forEach(d => { html += `<option value="${d}">${d}</option>`; });
-            filter.innerHTML = html;
-            filter.value = currentVal;
+            filter.innerHTML = html; filter.value = currentVal;
         }
 
         window.addExpense = () => {
@@ -195,33 +183,10 @@
             if(!name || !amtRaw || !date) return alert("請輸入完整資訊");
             let amtJPY = currency === 'JPY' ? amtRaw : Math.round(amtRaw / rate);
             let amtTWD = currency === 'TWD' ? amtRaw : Math.round(amtRaw * rate);
-            const sameDayExps = travelData.expenses.filter(e => e.date === date);
-            const maxOrder = sameDayExps.reduce((max, e) => Math.max(max, e.sortOrder || 0), -1);
-            travelData.expenses.push({ 
-                id: Date.now(), 
-                date, name, amt: amtJPY, amtTWD: amtTWD, 
-                method, payer, splitWith, note: note || "",
-                sortOrder: maxOrder + 1 
-            });
-            document.getElementById('expName').value = '';
-            document.getElementById('expAmount').value = '';
-            document.getElementById('expNote').value = '';
+            const maxOrder = travelData.expenses.filter(e => e.date === date).reduce((max, e) => Math.max(max, e.sortOrder || 0), -1);
+            travelData.expenses.push({ id: Date.now(), date, name, amt: amtJPY, amtTWD: amtTWD, method, payer, splitWith, note: note || "", sortOrder: maxOrder + 1 });
+            document.getElementById('expName').value = ''; document.getElementById('expAmount').value = ''; document.getElementById('expNote').value = '';
             pushToCloud();
-        };
-
-        window.moveExpense = (id, direction) => {
-            const exp = travelData.expenses.find(e => e.id === id);
-            if (!exp) return;
-            const sameDayExps = travelData.expenses.filter(e => e.date === exp.date).sort((a, b) => (b.sortOrder || 0) - (a.sortOrder || 0));
-            const currentIdx = sameDayExps.findIndex(e => e.id === id);
-            const targetIdx = currentIdx - direction;
-            if (targetIdx >= 0 && targetIdx < sameDayExps.length) {
-                const targetExp = sameDayExps[targetIdx];
-                const tempOrder = exp.sortOrder || 0;
-                exp.sortOrder = targetExp.sortOrder || 0;
-                targetExp.sortOrder = tempOrder;
-                pushToCloud();
-            }
         };
 
         window.renderExpenses = () => {
@@ -229,37 +194,35 @@
             const reportDiv = document.getElementById('settlementReport');
             const filterDate = document.getElementById('dateFilter').value;
             const exps = travelData.expenses || [];
-
             const sortedExps = exps.slice().sort((a,b) => {
                 if (b.date !== a.date) return new Date(b.date) - new Date(a.date);
                 return (b.sortOrder || 0) - (a.sortOrder || 0);
             });
             const filteredExps = filterDate === 'all' ? sortedExps : sortedExps.filter(e => e.date === filterDate);
-
             historyDiv.innerHTML = filteredExps.map((e) => `
                 <div id="exp-card-${e.id}" class="bg-white p-3 rounded shadow-sm border border-stone-100 text-sm">
                     <div class="flex justify-between items-start mb-2">
                         <div class="flex items-start gap-3 flex-1">
                             <div class="flex flex-col bg-stone-50 rounded border border-stone-200 p-0.5">
-                                <button onclick="moveExpense(${e.id}, 1)" class="move-btn" title="上移">▲</button>
-                                <button onclick="moveExpense(${e.id}, -1)" class="move-btn" title="下移">▼</button>
+                                <button onclick="moveExpense(${e.id}, 1)" class="move-btn">▲</button>
+                                <button onclick="moveExpense(${e.id}, -1)" class="move-btn">▼</button>
                             </div>
                             <div class="flex flex-col flex-1">
                                 <span class="font-bold text-[var(--jp-indigo)] editable-content name-val">${e.name}</span>
                                 <div class="flex flex-wrap items-center gap-2 text-[10px] text-stone-400 mt-1">
-                                    <span class="flex items-center">📅 <input type="date" value="${e.date}" disabled class="date-editor ml-1" onchange="updateExpField(${e.id}, 'date', this.value)"></span>
-                                    <span class="flex items-center bg-stone-100 px-1 rounded">📝 <span class="editable-content note-val min-w-[30px] inline-block ml-1">${e.note || '無備註'}</span></span>
+                                    <span>📅 <input type="date" value="${e.date}" disabled class="date-editor" onchange="updateExpField(${e.id}, 'date', this.value)"></span>
+                                    <span class="bg-stone-100 px-1 rounded">📝 <span class="editable-content note-val">${e.note || '無備註'}</span></span>
                                 </div>
                             </div>
                         </div>
                         <div class="flex gap-3 ml-2">
                             <button onclick="toggleEditMode(this, ${e.id})" class="text-blue-500 text-xs font-bold whitespace-nowrap">✏️ 編輯</button>
-                            <button onclick="deleteExpense(${e.id})" class="text-stone-300 hover:text-red-500">✕</button>
+                            <button onclick="deleteExpense(${e.id})" class="text-stone-300">✕</button>
                         </div>
                     </div>
                     <div class="flex items-center gap-3 mb-3 bg-stone-50 p-2 rounded border border-stone-100 ml-9">
-                        <div class="flex items-center gap-1"><span class="text-[10px] text-stone-400 font-bold">台幣 $</span><span class="editable-content twd-val font-bold text-stone-800">${e.amtTWD}</span></div>
-                        <div class="flex items-center gap-1"><span class="text-[10px] text-stone-400">日圓 ¥</span><span class="editable-content jpy-val text-stone-500">${e.amt}</span></div>
+                        <span class="text-[10px] text-stone-400 font-bold">台幣 $</span><span class="editable-content twd-val font-bold text-stone-800">${e.amtTWD}</span>
+                        <span class="text-[10px] text-stone-400">日圓 ¥</span><span class="editable-content jpy-val text-stone-500">${e.amt}</span>
                     </div>
                     <div class="flex flex-wrap gap-2 justify-between items-center text-[11px] ml-9">
                         <div class="flex gap-2 items-center">
@@ -274,58 +237,67 @@
                             </select>
                         </div>
                         <div class="flex flex-wrap gap-2 bg-white px-2 py-1 rounded border border-stone-200">
-                            <label class="cursor-pointer flex items-center gap-1"><input type="checkbox" disabled ${(e.splitWith||[]).includes('Ruby')?'checked':''} onclick="toggleSplitMember(${e.id}, 'Ruby')"> R</label>
-                            <label class="cursor-pointer flex items-center gap-1"><input type="checkbox" disabled ${(e.splitWith||[]).includes('Wen')?'checked':''} onclick="toggleSplitMember(${e.id}, 'Wen')"> W</label>
-                            <label class="cursor-pointer flex items-center gap-1 text-orange-600"><input type="checkbox" disabled ${(e.splitWith||[]).includes('R代購')?'checked':''} onclick="toggleSplitMember(${e.id}, 'R代購')"> R代</label>
-                            <label class="cursor-pointer flex items-center gap-1 text-blue-600"><input type="checkbox" disabled ${(e.splitWith||[]).includes('W代購')?'checked':''} onclick="toggleSplitMember(${e.id}, 'W代購')"> W代</label>
+                            <label><input type="checkbox" disabled ${(e.splitWith||[]).includes('Ruby')?'checked':''} onclick="toggleSplitMember(${e.id}, 'Ruby')"> R</label>
+                            <label><input type="checkbox" disabled ${(e.splitWith||[]).includes('Wen')?'checked':''} onclick="toggleSplitMember(${e.id}, 'Wen')"> W</label>
+                            <label class="text-orange-600"><input type="checkbox" disabled ${(e.splitWith||[]).includes('R代購')?'checked':''} onclick="toggleSplitMember(${e.id}, 'R代購')"> R代</label>
+                            <label class="text-blue-600"><input type="checkbox" disabled ${(e.splitWith||[]).includes('W代購')?'checked':''} onclick="toggleSplitMember(${e.id}, 'W代購')"> W代</label>
                         </div>
                     </div>
-                </div>`).join('') || '<p class="text-center text-stone-400 py-8 italic">目前尚無支出紀錄</p>';
+                </div>`).join('');
 
-            // 核心修正：統計邏輯扣除代購
-            let stats = { totalPublicTwd: 0, rPaidPublic: 0, wPaidPublic: 0, rOwnTwd: 0, wOwnTwd: 0, rOwnJpy: 0, wOwnJpy: 0, rBuyTwd: 0, wBuyTwd: 0 };
+            let stats = { displayTotal: 0, rPaid: 0, wPaid: 0, rShare: 0, wShare: 0, rJpy: 0, wJpy: 0, rBuyTwd: 0, wBuyTwd: 0, rBuyJpy: 0, wBuyJpy: 0, rPersTwd: 0, wPersTwd: 0 };
             exps.forEach(e => {
                 const twd = e.amtTWD || 0; const jpy = e.amt || 0; const split = e.splitWith || [];
-                if (split.length === 0) return;
-                const shTwd = twd / split.length; const shJpy = jpy / split.length;
-
-                if (e.method !== 'JPY_CASH') {
-                    let publicPart = 0;
-                    if (split.includes('Ruby')) { stats.rOwnTwd += shTwd; publicPart += shTwd; }
-                    if (split.includes('Wen')) { stats.wOwnTwd += shTwd; publicPart += shTwd; }
-                    if (e.payer === 'Ruby') stats.rPaidPublic += publicPart; else stats.wPaidPublic += publicPart;
-                    stats.totalPublicTwd += publicPart;
-                    if (split.includes('R代購')) stats.rBuyTwd += shTwd;
-                    if (split.includes('W代購')) stats.wBuyTwd += shTwd;
-                } else {
-                    if (split.includes('Ruby')) stats.rOwnJpy += shJpy;
-                    if (split.includes('Wen')) stats.wOwnJpy += shJpy;
-                    const rate = travelData.rate || 0.22;
-                    if (split.includes('R代購')) stats.rBuyTwd += (shJpy * rate);
-                    if (split.includes('W代購')) stats.wBuyTwd += (shJpy * rate);
+                const isBuy = split.includes('R代購') || split.includes('W代購');
+                if(split.length > 0) {
+                    const shTwd = twd / split.length; const shJpy = jpy / split.length;
+                    if(e.method !== 'JPY_CASH') {
+                        if(!isBuy) stats.displayTotal += twd;
+                        if(e.payer === 'Ruby') stats.rPaid += twd; else stats.wPaid += twd;
+                        if(split.includes('Ruby')) { stats.rShare += shTwd; stats.rPersTwd += shTwd; }
+                        if(split.includes('Wen')) { stats.wShare += shTwd; stats.wPersTwd += shTwd; }
+                        if(split.includes('R代購')) { stats.rShare += shTwd; stats.rBuyTwd += shTwd; }
+                        if(split.includes('W代購')) { stats.wShare += shTwd; stats.wBuyTwd += shTwd; }
+                    } else {
+                        if(split.includes('Ruby')) stats.rJpy += shJpy; if(split.includes('Wen')) stats.wJpy += shJpy;
+                        if(split.includes('R代購')) stats.rBuyJpy += shJpy; if(split.includes('W代購')) stats.wBuyJpy += shJpy;
+                    }
                 }
             });
-
-            const rubyBal = stats.rPaidPublic - stats.rOwnTwd;
+            const rubyBal = stats.rPaid - stats.rShare;
             reportDiv.innerHTML = `
                 <div class="text-center border-b pb-4">
-                    <p class="text-[10px] text-stone-400 mb-1 uppercase tracking-widest">🌍 總支出 (公家台幣/刷卡)</p>
-                    <p class="text-4xl font-black text-[var(--jp-indigo)]">$${Math.round(stats.totalPublicTwd).toLocaleString()}</p>
+                    <p class="text-[10px] text-stone-400 mb-1 uppercase tracking-widest">🌍 總公費支出 (排除日現/代購)</p>
+                    <p class="text-4xl font-black text-[var(--jp-indigo)]">$${Math.round(stats.displayTotal).toLocaleString()}</p>
                 </div>
-                <div class="grid grid-cols-2 gap-4">
-                    <div class="bg-stone-50 p-3 rounded-lg border text-center">
-                        <p class="text-[10px] font-bold text-stone-400 mb-1">👤 Ruby</p>
-                        <p class="text-sm font-bold">$${Math.round(stats.rOwnTwd)} / ¥${Math.round(stats.rOwnJpy)}</p>
-                        <p class="text-[9px] text-orange-600 font-bold">代購: $${Math.round(stats.rBuyTwd)}</p>
+                <div class="grid grid-cols-1 gap-3">
+                    <div class="bg-indigo-50 p-4 rounded-xl border border-indigo-100 flex justify-between items-center shadow-sm">
+                        <span class="text-indigo-900 font-bold">👤 Ruby 代墊總額</span>
+                        <span class="text-2xl font-black text-indigo-700">$${Math.round(stats.rPaid).toLocaleString()}</span>
                     </div>
-                    <div class="bg-stone-50 p-3 rounded-lg border text-center">
-                        <p class="text-[10px] font-bold text-stone-400 mb-1">👤 Wen</p>
-                        <p class="text-sm font-bold">$${Math.round(stats.wOwnTwd)} / ¥${Math.round(stats.wOwnJpy)}</p>
-                        <p class="text-[9px] text-blue-600 font-bold">代購: $${Math.round(stats.wBuyTwd)}</p>
+                    <div class="bg-emerald-50 p-4 rounded-xl border border-emerald-100 flex justify-between items-center shadow-sm">
+                        <span class="text-emerald-900 font-bold">👤 Wen 代墊總額</span>
+                        <span class="text-2xl font-black text-emerald-700">$${Math.round(stats.wPaid).toLocaleString()}</span>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 gap-4 mt-2">
+                    <div class="bg-indigo-50/30 p-4 rounded-xl border border-indigo-100">
+                        <p class="text-xs font-bold text-indigo-800 mb-2 border-b border-indigo-100 pb-1">👤 Ruby 應負擔 (含公費與代購)</p>
+                        <div class="flex justify-between items-end">
+                            <span class="text-xl font-black text-indigo-900">$${Math.round(stats.rPersTwd).toLocaleString()} / ¥${Math.round(stats.rJpy).toLocaleString()}</span>
+                            <span class="text-sm font-bold text-orange-600 bg-white px-2 py-1 rounded shadow-sm">代購: $${Math.round(stats.rBuyTwd)} / ¥${Math.round(stats.rBuyJpy)}</span>
+                        </div>
+                    </div>
+                    <div class="bg-emerald-50/30 p-4 rounded-xl border border-emerald-100">
+                        <p class="text-xs font-bold text-emerald-800 mb-2 border-b border-emerald-100 pb-1">👤 Wen 應負擔 (含公費與代購)</p>
+                        <div class="flex justify-between items-end">
+                            <span class="text-xl font-black text-emerald-900">$${Math.round(stats.wPersTwd).toLocaleString()} / ¥${Math.round(stats.wJpy).toLocaleString()}</span>
+                            <span class="text-sm font-bold text-blue-600 bg-white px-2 py-1 rounded shadow-sm">代購: $${Math.round(stats.wBuyTwd)} / ¥${Math.round(stats.wBuyJpy)}</span>
+                        </div>
                     </div>
                 </div>
                 <div class="mt-4 p-5 rounded-xl text-center border-2 border-[var(--jp-accent-red)] bg-rose-50">
-                    <p class="text-xs font-bold text-rose-800 mb-1">最終結算 (扣除代購)</p>
+                    <p class="text-xs font-bold text-rose-800 mb-1">最終結算 (台幣補給)</p>
                     ${Math.abs(rubyBal) < 1 ? '<p class="font-bold">✨ 互不相欠</p>' : `
                         <p class="text-lg font-black text-rose-900">${rubyBal < 0 ? 'Ruby 應補給 Wen' : 'Wen 應補給 Ruby'}</p>
                         <p class="text-3xl font-black text-rose-600">$${Math.abs(Math.round(rubyBal)).toLocaleString()}</p>
@@ -336,17 +308,11 @@
         window.toggleEditMode = (btn, id) => {
             const card = document.getElementById(`exp-card-${id}`);
             const isEditing = card.classList.toggle('is-editing');
-            const fields = {
-                name: card.querySelector('.name-val'), note: card.querySelector('.note-val'),
-                twd: card.querySelector('.twd-val'), jpy: card.querySelector('.jpy-val'),
-                date: card.querySelector('.date-editor'), selects: card.querySelectorAll('select'),
-                checks: card.querySelectorAll('input[type="checkbox"]')
-            };
+            const fields = { name: card.querySelector('.name-val'), note: card.querySelector('.note-val'), twd: card.querySelector('.twd-val'), jpy: card.querySelector('.jpy-val'), date: card.querySelector('.date-editor'), selects: card.querySelectorAll('select'), checks: card.querySelectorAll('input[type="checkbox"]') };
             if (isEditing) {
                 btn.innerHTML = '✅ 儲存'; btn.classList.replace('text-blue-500', 'text-green-600');
                 fields.name.contentEditable = fields.note.contentEditable = fields.twd.contentEditable = fields.jpy.contentEditable = true;
-                fields.date.disabled = false; fields.selects.forEach(s => s.disabled = false); fields.checks.forEach(c => c.disabled = false);
-                fields.name.focus();
+                fields.date.disabled = false; fields.selects.forEach(s => s.disabled = false); fields.checks.forEach(c => c.disabled = false); fields.name.focus();
             } else {
                 btn.innerHTML = '✏️ 編輯'; btn.classList.replace('text-green-600', 'text-blue-500');
                 fields.name.contentEditable = fields.note.contentEditable = fields.twd.contentEditable = fields.jpy.contentEditable = false;
@@ -357,27 +323,20 @@
                     travelData.expenses[idx].note = fields.note.innerText === '無備註' ? "" : fields.note.innerText;
                     travelData.expenses[idx].amtTWD = parseFloat(fields.twd.innerText.replace(/[^\d.-]/g, '')) || 0;
                     travelData.expenses[idx].amt = parseFloat(fields.jpy.innerText.replace(/[^\d.-]/g, '')) || 0;
-                    travelData.expenses[idx].date = fields.date.value;
-                    pushToCloud();
+                    travelData.expenses[idx].date = fields.date.value; pushToCloud();
                 }
             }
         };
 
-        window.updateExpField = (id, field, val) => {
-            const idx = travelData.expenses.findIndex(e => e.id === id);
-            if(idx !== -1) { travelData.expenses[idx][field] = val; pushToCloud(); }
-        };
-
+        window.updateExpField = (id, field, val) => { const idx = travelData.expenses.findIndex(e => e.id === id); if(idx !== -1) { travelData.expenses[idx][field] = val; pushToCloud(); } };
         window.toggleSplitMember = (id, member) => {
             const idx = travelData.expenses.findIndex(e => e.id === id);
             if(idx !== -1) {
                 let current = travelData.expenses[idx].splitWith || [];
                 current = current.includes(member) ? current.filter(m => m !== member) : [...current, member];
-                travelData.expenses[idx].splitWith = current;
-                pushToCloud();
+                travelData.expenses[idx].splitWith = current; pushToCloud();
             }
         };
-
         window.deleteExpense = (id) => { if(confirm("確定刪除？")) { travelData.expenses = travelData.expenses.filter(e => e.id !== id); pushToCloud(); } };
         window.addRow = () => { travelData.itinerary.push({ time: "09:00", trans: "🚶 步行", location: "新點", mapUrl: "", amount: 0 }); pushToCloud(); };
         window.updateCell = (idx, field, val) => { travelData.itinerary[idx][field] = field === 'amount' ? parseFloat(val) || 0 : val; pushToCloud(); };
@@ -398,33 +357,24 @@
 
         window.exportToText = () => {
             const exps = travelData.expenses || [];
-            let stats = { rPaidPublic: 0, rOwnTwd: 0, rBuyTwd: 0, wBuyTwd: 0 };
+            let stats = { total: 0, rPaid: 0, wPaid: 0, rShare: 0, wShare: 0 };
             let detailList = "";
             exps.slice().sort((a,b) => new Date(a.date) - new Date(b.date) || (a.sortOrder-b.sortOrder)).forEach(e => {
                 const twd = e.amtTWD || 0; const split = e.splitWith || [];
+                const isBuy = split.includes('R代購') || split.includes('W代購');
                 detailList += `▪️ ${e.date.slice(5)} ${e.name}: ${e.method==='JPY_CASH'?e.amt+'¥':twd+'$'} (${split.join('/')})\n`;
-                if(split.length > 0) {
-                    const shTwd = twd / split.length;
-                    if(e.method !== 'JPY_CASH') {
-                        let pubSh = 0;
-                        if(split.includes('Ruby')) { stats.rOwnTwd += shTwd; pubSh += shTwd; }
-                        if(split.includes('Wen')) { pubSh += shTwd; }
-                        if(e.payer === 'Ruby') stats.rPaidPublic += pubSh;
-                        if(split.includes('R代購')) stats.rBuyTwd += shTwd;
-                        if(split.includes('W代購')) stats.wBuyTwd += shTwd;
-                    } else {
-                        const rate = travelData.rate || 0.22;
-                        const shJpy = (e.amt || 0) / split.length;
-                        if(split.includes('R代購')) stats.rBuyTwd += (shJpy * rate);
-                        if(split.includes('W代購')) stats.wBuyTwd += (shJpy * rate);
-                    }
+                if(e.method !== 'JPY_CASH' && split.length > 0) {
+                    if(!isBuy) stats.total += twd; 
+                    if(e.payer === 'Ruby') stats.rPaid += twd; else stats.wPaid += twd;
+                    const sh = twd / split.length;
+                    if(split.includes('Ruby') || split.includes('R代購')) stats.rShare += sh;
+                    if(split.includes('Wen') || split.includes('W代購')) stats.wShare += sh;
                 }
             });
-            const bal = Math.round(stats.rPaidPublic - stats.rOwnTwd);
-            const report = `🧸 旅費結算報表 (扣除代購)\n---\n📊 結算結果：${bal < 0 ? 'Ruby ➡️ Wen' : 'Wen ➡️ Ruby'} $${Math.abs(bal)}\n🛍️ 代購參考：R $${Math.round(stats.rBuyTwd)} / W $${Math.round(stats.wBuyTwd)}\n---\n📋 明細：\n${detailList}`;
+            const bal = Math.round(stats.rPaid - stats.rShare);
+            const report = `🧸 旅費結算報表\n---\n🌍 總公費支出：$${Math.round(stats.total)}\n📊 結果：${bal < 0 ? 'Ruby 補給 Wen' : 'Wen 補給 Ruby'} $${Math.abs(bal)}\n---\n📋 明細：\n${detailList}`;
             navigator.clipboard.writeText(report).then(() => alert("已複製報表！"));
         };
-
         window.clearAllExpenses = () => { if(confirm("確定全部清空？")) { travelData.expenses = []; pushToCloud(); } };
         window.switchPage = (p) => {
             document.getElementById('itinerary-page').classList.toggle('hidden', p !== 'itinerary');

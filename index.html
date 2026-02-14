@@ -337,6 +337,23 @@
                 travelData.expenses[idx].splitWith = current; pushToCloud();
             }
         };
+
+        window.moveExpense = (id, direction) => {
+            const idx = travelData.expenses.findIndex(e => e.id === id);
+            if (idx === -1) return;
+            const exp = travelData.expenses[idx];
+            const dateExps = travelData.expenses.filter(e => e.date === exp.date).sort((a,b) => (a.sortOrder||0) - (b.sortOrder||0));
+            const currentIdxInDate = dateExps.findIndex(e => e.id === id);
+            const targetIdxInDate = currentIdxInDate - direction;
+            if (targetIdxInDate >= 0 && targetIdxInDate < dateExps.length) {
+                const swapTarget = dateExps[targetIdxInDate];
+                const tempOrder = exp.sortOrder;
+                exp.sortOrder = swapTarget.sortOrder;
+                swapTarget.sortOrder = tempOrder;
+                pushToCloud();
+            }
+        };
+
         window.deleteExpense = (id) => { if(confirm("確定刪除？")) { travelData.expenses = travelData.expenses.filter(e => e.id !== id); pushToCloud(); } };
         window.addRow = () => { travelData.itinerary.push({ time: "09:00", trans: "🚶 步行", location: "新點", mapUrl: "", amount: 0 }); pushToCloud(); };
         window.updateCell = (idx, field, val) => { travelData.itinerary[idx][field] = field === 'amount' ? parseFloat(val) || 0 : val; pushToCloud(); };
@@ -355,14 +372,25 @@
             document.getElementById('rateInput').value = travelData.rate || 0.22;
         };
 
+        // 更新後的 LINE 報表函數
         window.exportToText = () => {
             const exps = travelData.expenses || [];
             let stats = { total: 0, rPaid: 0, wPaid: 0, rShare: 0, wShare: 0 };
             let detailList = "";
-            exps.slice().sort((a,b) => new Date(a.date) - new Date(b.date) || (a.sortOrder-b.sortOrder)).forEach(e => {
-                const twd = e.amtTWD || 0; const split = e.splitWith || [];
+            
+            // 排序規則：日期由舊到新，同日按 sortOrder 由小到大
+            exps.slice().sort((a,b) => {
+                if(a.date !== b.date) return new Date(a.date) - new Date(b.date);
+                return (a.sortOrder || 0) - (b.sortOrder || 0);
+            }).forEach(e => {
+                const twd = e.amtTWD || 0; 
+                const split = e.splitWith || [];
+                const payerShort = e.payer === 'Ruby' ? 'R' : 'W'; // 付款人簡稱
                 const isBuy = split.includes('R代購') || split.includes('W代購');
-                detailList += `▪️ ${e.date.slice(5)} ${e.name}: ${e.method==='JPY_CASH'?e.amt+'¥':twd+'$'} (${split.join('/')})\n`;
+                
+                // 組合明細：顯示 [付:X]
+                detailList += `▪️ ${e.date.slice(5)} ${e.name}: ${e.method==='JPY_CASH'?e.amt+'¥':twd+'$'} [付:${payerShort}] (${split.join('/')})\n`;
+                
                 if(e.method !== 'JPY_CASH' && split.length > 0) {
                     if(!isBuy) stats.total += twd; 
                     if(e.payer === 'Ruby') stats.rPaid += twd; else stats.wPaid += twd;
@@ -371,10 +399,13 @@
                     if(split.includes('Wen') || split.includes('W代購')) stats.wShare += sh;
                 }
             });
+
             const bal = Math.round(stats.rPaid - stats.rShare);
-            const report = `🧸 旅費結算報表\n---\n🌍 總公費支出：$${Math.round(stats.total)}\n📊 結果：${bal < 0 ? 'Ruby 補給 Wen' : 'Wen 補給 Ruby'} $${Math.abs(bal)}\n---\n📋 明細：\n${detailList}`;
-            navigator.clipboard.writeText(report).then(() => alert("已複製報表！"));
+            const report = `🧸 旅費結算報表\n---\n🌍 總公費支出：$${Math.round(stats.total).toLocaleString()}\n📊 結果：${bal < 0 ? 'Ruby 應補給 Wen' : 'Wen 應補給 Ruby'} $${Math.abs(bal).toLocaleString()}\n---\n📋 明細：\n${detailList}`;
+            
+            navigator.clipboard.writeText(report).then(() => alert("已複製包含「付款人」的報表！"));
         };
+
         window.clearAllExpenses = () => { if(confirm("確定全部清空？")) { travelData.expenses = []; pushToCloud(); } };
         window.switchPage = (p) => {
             document.getElementById('itinerary-page').classList.toggle('hidden', p !== 'itinerary');

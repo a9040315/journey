@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🧸 大手牽小手旅行 (帳務完全版) ✈️💖</title>
+    <title>🧸 大手牽小手旅行 (回饋強化版) ✈️💖</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script type="importmap">
     {
@@ -61,7 +61,7 @@
                             <input type="number" id="expAmount" placeholder="金額" class="col-span-2 p-2 border rounded text-sm">
                         </div>
                         <div class="grid grid-cols-2 gap-2 mb-2">
-                            <select id="expMethod" class="p-2 border rounded bg-white text-sm">
+                            <select id="expMethod" onchange="toggleCardField()" class="p-2 border rounded bg-white text-sm">
                                 <option value="JPY_CASH">💴 日圓現金</option>
                                 <option value="TWD_CASH">💵 台幣現金</option>
                                 <option value="CARD">💳 刷卡付款</option>
@@ -71,6 +71,22 @@
                                 <option value="Wen">Wen 付款</option>
                             </select>
                         </div>
+                        <div id="cardRewardSection" class="hidden space-y-2 mb-2 bg-blue-50 p-3 rounded border border-blue-100">
+                            <div class="grid grid-cols-2 gap-2">
+                                <select id="expCardType" class="p-1 border rounded bg-white text-xs font-bold text-blue-800">
+                                    <option value="台新Richart">💳 台新Richart</option>
+                                    <option value="中信cube">💳 中信cube</option>
+                                    <option value="玉山熊本熊">💳 玉山熊本熊</option>
+                                    <option value="玉山unicard">💳 玉山unicard</option>
+                                </select>
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs font-bold text-blue-700">回饋%</span>
+                                    <input type="number" id="expRewardRate" value="3" step="0.1" class="w-full p-1 border rounded text-sm">
+                                </div>
+                            </div>
+                            <div class="text-right text-[10px] text-blue-500 italic" id="rewardPreview">預計回饋: $0</div>
+                        </div>
+
                         <input type="text" id="expNote" placeholder="備註" class="w-full p-2 border rounded text-sm mb-4">
                         <div class="bg-white p-3 rounded border border-stone-200 mb-4">
                             <p class="text-[10px] font-bold text-stone-400 mb-2 uppercase">分帳或代購對象</p>
@@ -156,15 +172,13 @@
         });
 
         function pushToCloud() { set(travelRef, travelData); }
-        function updateDateFilterOptions() {
-            const filter = document.getElementById('dateFilter');
-            if(!filter) return;
-            const currentVal = filter.value;
-            const dates = [...new Set(travelData.expenses.map(e => e.date))].sort((a,b) => new Date(b) - new Date(a));
-            let html = '<option value="all">📅 全部日期</option>';
-            dates.forEach(d => { html += `<option value="${d}">${d}</option>`; });
-            filter.innerHTML = html; filter.value = currentVal;
-        }
+        
+        // 顯示/隱藏信用卡欄位
+        window.toggleCardField = () => {
+            const method = document.getElementById('expMethod').value;
+            const section = document.getElementById('cardRewardSection');
+            section.classList.toggle('hidden', method !== 'CARD');
+        };
 
         window.addExpense = () => {
             const date = document.getElementById('expDateInput').value;
@@ -175,17 +189,39 @@
             const payer = document.getElementById('expPayer').value;
             const note = document.getElementById('expNote').value;
             const rate = travelData.rate || 0.22;
+            
+            // 處理信用卡相關欄位
+            const rewardRate = method === 'CARD' ? parseFloat(document.getElementById('expRewardRate').value) || 0 : 0;
+            const cardType = method === 'CARD' ? document.getElementById('expCardType').value : "";
+
             const splitWith = [];
             if(document.getElementById('splitRuby').checked) splitWith.push('Ruby');
             if(document.getElementById('splitWen').checked) splitWith.push('Wen');
             if(document.getElementById('splitRBuy').checked) splitWith.push('R代購');
             if(document.getElementById('splitWBuy').checked) splitWith.push('W代購');
+            
             if(!name || !amtRaw || !date) return alert("請輸入完整資訊");
+            
             let amtJPY = currency === 'JPY' ? amtRaw : Math.round(amtRaw / rate);
             let amtTWD = currency === 'TWD' ? amtRaw : Math.round(amtRaw * rate);
+            
+            // 計算回饋金 (台幣)
+            let rewardAmt = method === 'CARD' ? Math.round(amtTWD * (rewardRate / 100)) : 0;
+
             const maxOrder = travelData.expenses.filter(e => e.date === date).reduce((max, e) => Math.max(max, e.sortOrder || 0), -1);
-            travelData.expenses.push({ id: Date.now(), date, name, amt: amtJPY, amtTWD: amtTWD, method, payer, splitWith, note: note || "", sortOrder: maxOrder + 1 });
-            document.getElementById('expName').value = ''; document.getElementById('expAmount').value = ''; document.getElementById('expNote').value = '';
+            
+            travelData.expenses.push({ 
+                id: Date.now(), date, name, amt: amtJPY, amtTWD: amtTWD, 
+                method, payer, splitWith, note: note || "", 
+                sortOrder: maxOrder + 1,
+                rewardRate: rewardRate,
+                rewardAmt: rewardAmt,
+                cardType: cardType // 儲存卡片名稱
+            });
+            
+            document.getElementById('expName').value = ''; 
+            document.getElementById('expAmount').value = ''; 
+            document.getElementById('expNote').value = '';
             pushToCloud();
         };
 
@@ -199,6 +235,7 @@
                 return (b.sortOrder || 0) - (a.sortOrder || 0);
             });
             const filteredExps = filterDate === 'all' ? sortedExps : sortedExps.filter(e => e.date === filterDate);
+            
             historyDiv.innerHTML = filteredExps.map((e) => `
                 <div id="exp-card-${e.id}" class="bg-white p-3 rounded shadow-sm border border-stone-100 text-sm">
                     <div class="flex justify-between items-start mb-2">
@@ -212,6 +249,7 @@
                                 <div class="flex flex-wrap items-center gap-2 text-[10px] text-stone-400 mt-1">
                                     <span>📅 <input type="date" value="${e.date}" disabled class="date-editor" onchange="updateExpField(${e.id}, 'date', this.value)"></span>
                                     <span class="bg-stone-100 px-1 rounded">📝 <span class="editable-content note-val">${e.note || '無備註'}</span></span>
+                                    ${e.method === 'CARD' ? `<span class="bg-blue-50 text-blue-600 px-1 rounded font-medium">💳 ${e.cardType || '未指定'} | 🎁 ${e.rewardRate}% ($<span class="reward-val">${e.rewardAmt || 0}</span>)</span>` : ''}
                                 </div>
                             </div>
                         </div>
@@ -235,6 +273,13 @@
                                 <option value="TWD_CASH" ${e.method==='TWD_CASH'?'selected':''}>💵 台幣現</option>
                                 <option value="CARD" ${e.method==='CARD'?'selected':''}>💳 刷卡</option>
                             </select>
+                            ${e.method === 'CARD' ? `
+                            <select onchange="updateExpField(${e.id}, 'cardType', this.value)" class="mini-select bg-blue-50" disabled>
+                                <option value="台新Richart" ${e.cardType==='台新Richart'?'selected':''}>台新Richart</option>
+                                <option value="中信cube" ${e.cardType==='中信cube'?'selected':''}>中信cube</option>
+                                <option value="玉山熊本熊" ${e.cardType==='玉山熊本熊'?'selected':''}>玉山熊本熊</option>
+                                <option value="玉山unicard" ${e.cardType==='玉山unicard'?'selected':''}>玉山unicard</option>
+                            </select>` : ''}
                         </div>
                         <div class="flex flex-wrap gap-2 bg-white px-2 py-1 rounded border border-stone-200">
                             <label><input type="checkbox" disabled ${(e.splitWith||[]).includes('Ruby')?'checked':''} onclick="toggleSplitMember(${e.id}, 'Ruby')"> R</label>
@@ -245,19 +290,26 @@
                     </div>
                 </div>`).join('');
 
-            let stats = { displayTotal: 0, rPaid: 0, wPaid: 0, rShare: 0, wShare: 0, rJpy: 0, wJpy: 0, rBuyTwd: 0, wBuyTwd: 0, rBuyJpy: 0, wBuyJpy: 0, rPersTwd: 0, wPersTwd: 0 };
+            // 結算邏輯保持不變
+            let stats = { displayTotal: 0, rPaid: 0, wPaid: 0, rShare: 0, wShare: 0, rJpy: 0, wJpy: 0, rBuyTwd: 0, wBuyTwd: 0, rBuyJpy: 0, wBuyJpy: 0, rPersTwd: 0, wPersTwd: 0, totalReward: 0 };
             exps.forEach(e => {
                 const twd = e.amtTWD || 0; const jpy = e.amt || 0; const split = e.splitWith || [];
                 const isBuy = split.includes('R代購') || split.includes('W代購');
+                const reward = e.rewardAmt || 0;
+                
                 if(split.length > 0) {
                     const shTwd = twd / split.length; const shJpy = jpy / split.length;
+                    const shReward = reward / split.length;
+
                     if(e.method !== 'JPY_CASH') {
                         if(!isBuy) stats.displayTotal += twd;
-                        if(e.payer === 'Ruby') stats.rPaid += twd; else stats.wPaid += twd;
-                        if(split.includes('Ruby')) { stats.rShare += shTwd; stats.rPersTwd += shTwd; }
-                        if(split.includes('Wen')) { stats.wShare += shTwd; stats.wPersTwd += shTwd; }
-                        if(split.includes('R代購')) { stats.rShare += shTwd; stats.rBuyTwd += shTwd; }
-                        if(split.includes('W代購')) { stats.wShare += shTwd; stats.wBuyTwd += shTwd; }
+                        if(e.payer === 'Ruby') stats.rPaid += (twd - reward); else stats.wPaid += (twd - reward);
+                        stats.totalReward += reward;
+
+                        if(split.includes('Ruby')) { stats.rShare += (shTwd - shReward); stats.rPersTwd += shTwd; }
+                        if(split.includes('Wen')) { stats.wShare += (shTwd - shReward); stats.wPersTwd += shTwd; }
+                        if(split.includes('R代購')) { stats.rShare += (shTwd - shReward); stats.rBuyTwd += shTwd; }
+                        if(split.includes('W代購')) { stats.wShare += (shTwd - shReward); stats.wBuyTwd += shTwd; }
                     } else {
                         if(split.includes('Ruby')) stats.rJpy += shJpy; if(split.includes('Wen')) stats.wJpy += shJpy;
                         if(split.includes('R代購')) stats.rBuyJpy += shJpy; if(split.includes('W代購')) stats.wBuyJpy += shJpy;
@@ -269,27 +321,28 @@
                 <div class="text-center border-b pb-4">
                     <p class="text-[10px] text-stone-400 mb-1 uppercase tracking-widest">🌍 總公費支出 (排除日現/代購)</p>
                     <p class="text-4xl font-black text-[var(--jp-indigo)]">$${Math.round(stats.displayTotal).toLocaleString()}</p>
+                    <p class="text-[11px] font-bold text-blue-600 mt-2">✨ 已節省信用卡回饋：$${Math.round(stats.totalReward).toLocaleString()}</p>
                 </div>
                 <div class="grid grid-cols-1 gap-3">
                     <div class="bg-indigo-50 p-4 rounded-xl border border-indigo-100 flex justify-between items-center shadow-sm">
-                        <span class="text-indigo-900 font-bold">👤 Ruby 代墊總額</span>
+                        <span class="text-indigo-900 font-bold">👤 Ruby 代墊 (扣回饋)</span>
                         <span class="text-2xl font-black text-indigo-700">$${Math.round(stats.rPaid).toLocaleString()}</span>
                     </div>
                     <div class="bg-emerald-50 p-4 rounded-xl border border-emerald-100 flex justify-between items-center shadow-sm">
-                        <span class="text-emerald-900 font-bold">👤 Wen 代墊總額</span>
+                        <span class="text-emerald-900 font-bold">👤 Wen 代墊 (扣回饋)</span>
                         <span class="text-2xl font-black text-emerald-700">$${Math.round(stats.wPaid).toLocaleString()}</span>
                     </div>
                 </div>
                 <div class="grid grid-cols-1 gap-4 mt-2">
                     <div class="bg-indigo-50/30 p-4 rounded-xl border border-indigo-100">
-                        <p class="text-xs font-bold text-indigo-800 mb-2 border-b border-indigo-100 pb-1">👤 Ruby 應負擔 (含公費與代購)</p>
+                        <p class="text-xs font-bold text-indigo-800 mb-2 border-b border-indigo-100 pb-1">👤 Ruby 應負擔 (未扣回饋)</p>
                         <div class="flex justify-between items-end">
                             <span class="text-xl font-black text-indigo-900">$${Math.round(stats.rPersTwd).toLocaleString()} / ¥${Math.round(stats.rJpy).toLocaleString()}</span>
                             <span class="text-sm font-bold text-orange-600 bg-white px-2 py-1 rounded shadow-sm">代購: $${Math.round(stats.rBuyTwd)} / ¥${Math.round(stats.rBuyJpy)}</span>
                         </div>
                     </div>
                     <div class="bg-emerald-50/30 p-4 rounded-xl border border-emerald-100">
-                        <p class="text-xs font-bold text-emerald-800 mb-2 border-b border-emerald-100 pb-1">👤 Wen 應負擔 (含公費與代購)</p>
+                        <p class="text-xs font-bold text-emerald-800 mb-2 border-b border-emerald-100 pb-1">👤 Wen 應負擔 (未扣回饋)</p>
                         <div class="flex justify-between items-end">
                             <span class="text-xl font-black text-emerald-900">$${Math.round(stats.wPersTwd).toLocaleString()} / ¥${Math.round(stats.wJpy).toLocaleString()}</span>
                             <span class="text-sm font-bold text-blue-600 bg-white px-2 py-1 rounded shadow-sm">代購: $${Math.round(stats.wBuyTwd)} / ¥${Math.round(stats.wBuyJpy)}</span>
@@ -297,7 +350,7 @@
                     </div>
                 </div>
                 <div class="mt-4 p-5 rounded-xl text-center border-2 border-[var(--jp-accent-red)] bg-rose-50">
-                    <p class="text-xs font-bold text-rose-800 mb-1">最終結算 (台幣補給)</p>
+                    <p class="text-xs font-bold text-rose-800 mb-1">最終結算 (台幣補給，已扣除回饋)</p>
                     ${Math.abs(rubyBal) < 1 ? '<p class="font-bold">✨ 互不相欠</p>' : `
                         <p class="text-lg font-black text-rose-900">${rubyBal < 0 ? 'Ruby 應補給 Wen' : 'Wen 應補給 Ruby'}</p>
                         <p class="text-3xl font-black text-rose-600">$${Math.abs(Math.round(rubyBal)).toLocaleString()}</p>
@@ -308,7 +361,15 @@
         window.toggleEditMode = (btn, id) => {
             const card = document.getElementById(`exp-card-${id}`);
             const isEditing = card.classList.toggle('is-editing');
-            const fields = { name: card.querySelector('.name-val'), note: card.querySelector('.note-val'), twd: card.querySelector('.twd-val'), jpy: card.querySelector('.jpy-val'), date: card.querySelector('.date-editor'), selects: card.querySelectorAll('select'), checks: card.querySelectorAll('input[type="checkbox"]') };
+            const fields = { 
+                name: card.querySelector('.name-val'), 
+                note: card.querySelector('.note-val'), 
+                twd: card.querySelector('.twd-val'), 
+                jpy: card.querySelector('.jpy-val'), 
+                date: card.querySelector('.date-editor'), 
+                selects: card.querySelectorAll('select'), 
+                checks: card.querySelectorAll('input[type="checkbox"]')
+            };
             if (isEditing) {
                 btn.innerHTML = '✅ 儲存'; btn.classList.replace('text-blue-500', 'text-green-600');
                 fields.name.contentEditable = fields.note.contentEditable = fields.twd.contentEditable = fields.jpy.contentEditable = true;
@@ -321,14 +382,30 @@
                 if(idx !== -1) {
                     travelData.expenses[idx].name = fields.name.innerText;
                     travelData.expenses[idx].note = fields.note.innerText === '無備註' ? "" : fields.note.innerText;
-                    travelData.expenses[idx].amtTWD = parseFloat(fields.twd.innerText.replace(/[^\d.-]/g, '')) || 0;
+                    const newTwd = parseFloat(fields.twd.innerText.replace(/[^\d.-]/g, '')) || 0;
+                    travelData.expenses[idx].amtTWD = newTwd;
                     travelData.expenses[idx].amt = parseFloat(fields.jpy.innerText.replace(/[^\d.-]/g, '')) || 0;
-                    travelData.expenses[idx].date = fields.date.value; pushToCloud();
+                    travelData.expenses[idx].date = fields.date.value;
+                    
+                    // 同步選擇的下拉選單內容（payer, method, cardType）
+                    const sels = fields.selects;
+                    sels.forEach(s => {
+                        const fieldName = s.getAttribute('onchange').split("'")[1];
+                        travelData.expenses[idx][fieldName] = s.value;
+                    });
+
+                    // 重新計算回饋金
+                    if(travelData.expenses[idx].method === 'CARD') {
+                        const rRate = travelData.expenses[idx].rewardRate || 0;
+                        travelData.expenses[idx].rewardAmt = Math.round(newTwd * (rRate / 100));
+                    }
+                    pushToCloud();
                 }
             }
         };
 
         window.updateExpField = (id, field, val) => { const idx = travelData.expenses.findIndex(e => e.id === id); if(idx !== -1) { travelData.expenses[idx][field] = val; pushToCloud(); } };
+        
         window.toggleSplitMember = (id, member) => {
             const idx = travelData.expenses.findIndex(e => e.id === id);
             if(idx !== -1) {
@@ -372,47 +449,77 @@
             document.getElementById('rateInput').value = travelData.rate || 0.22;
         };
 
-        // 更新後的 LINE 報表函數
         window.exportToText = () => {
             const exps = travelData.expenses || [];
-            let stats = { total: 0, rPaid: 0, wPaid: 0, rShare: 0, wShare: 0 };
+            let stats = { total: 0, rPaid: 0, wPaid: 0, rShare: 0, wShare: 0, totalReward: 0 };
             let detailList = "";
             
-            // 排序規則：日期由舊到新，同日按 sortOrder 由小到大
             exps.slice().sort((a,b) => {
                 if(a.date !== b.date) return new Date(a.date) - new Date(b.date);
                 return (a.sortOrder || 0) - (b.sortOrder || 0);
             }).forEach(e => {
                 const twd = e.amtTWD || 0; 
                 const split = e.splitWith || [];
-                const payerShort = e.payer === 'Ruby' ? 'R' : 'W'; // 付款人簡稱
+                const payerShort = e.payer === 'Ruby' ? 'R' : 'W';
                 const isBuy = split.includes('R代購') || split.includes('W代購');
+                const reward = e.rewardAmt || 0;
                 
-                // 組合明細：顯示 [付:X]
-                detailList += `▪️ ${e.date.slice(5)} ${e.name}: ${e.method==='JPY_CASH'?e.amt+'¥':twd+'$'} [付:${payerShort}] (${split.join('/')})\n`;
+                let rewStr = reward > 0 ? `(🎁-$${reward})` : "";
+                // 明細中加入卡片名稱
+                let cardInfo = e.method === 'CARD' ? `[${e.cardType}]` : "";
+                detailList += `▪️ ${e.date.slice(5)} ${e.name}${cardInfo}: ${e.method==='JPY_CASH'?e.amt+'¥':twd+'$'}${rewStr} [付:${payerShort}] (${split.join('/')})\n`;
                 
                 if(e.method !== 'JPY_CASH' && split.length > 0) {
                     if(!isBuy) stats.total += twd; 
-                    if(e.payer === 'Ruby') stats.rPaid += twd; else stats.wPaid += twd;
-                    const sh = twd / split.length;
+                    stats.totalReward += reward;
+                    
+                    if(e.payer === 'Ruby') stats.rPaid += (twd - reward); else stats.wPaid += (twd - reward);
+                    
+                    const sh = (twd - reward) / split.length;
                     if(split.includes('Ruby') || split.includes('R代購')) stats.rShare += sh;
                     if(split.includes('Wen') || split.includes('W代購')) stats.wShare += sh;
                 }
             });
 
             const bal = Math.round(stats.rPaid - stats.rShare);
-            const report = `🧸 旅費結算報表\n---\n🌍 總公費支出：$${Math.round(stats.total).toLocaleString()}\n📊 結果：${bal < 0 ? 'Ruby 應補給 Wen' : 'Wen 應補給 Ruby'} $${Math.abs(bal).toLocaleString()}\n---\n📋 明細：\n${detailList}`;
+            const report = `🧸 旅費結算報表\n---\n🌍 公費總計：$${Math.round(stats.total).toLocaleString()}\n✨ 信用卡總回饋：$${Math.round(stats.totalReward).toLocaleString()}\n📊 結果：${bal < 0 ? 'Ruby 應補給 Wen' : 'Wen 應補給 Ruby'} $${Math.abs(bal).toLocaleString()}\n---\n📋 明細：\n${detailList}`;
             
-            navigator.clipboard.writeText(report).then(() => alert("已複製包含「付款人」的報表！"));
+            navigator.clipboard.writeText(report).then(() => alert("已複製包含回饋明細的報表！"));
         };
 
         window.clearAllExpenses = () => { if(confirm("確定全部清空？")) { travelData.expenses = []; pushToCloud(); } };
+        
         window.switchPage = (p) => {
             document.getElementById('itinerary-page').classList.toggle('hidden', p !== 'itinerary');
             document.getElementById('split-page').classList.toggle('hidden', p !== 'split');
             document.getElementById('tab-itinerary').classList.toggle('active-tab', p === 'itinerary');
             document.getElementById('tab-split').classList.toggle('active-tab', p === 'split');
         };
+
+        function updateDateFilterOptions() {
+            const filter = document.getElementById('dateFilter');
+            if(!filter) return;
+            const currentVal = filter.value;
+            const dates = [...new Set(travelData.expenses.map(e => e.date))].sort((a,b) => new Date(b) - new Date(a));
+            let html = '<option value="all">📅 全部日期</option>';
+            dates.forEach(d => { html += `<option value="${d}">${d}</option>`; });
+            filter.innerHTML = html; filter.value = currentVal;
+        }
+
+        // 自動更新回饋預覽
+        document.getElementById('expAmount').addEventListener('input', updateRewardPreview);
+        document.getElementById('expRewardRate').addEventListener('input', updateRewardPreview);
+        document.getElementById('expCurrency').addEventListener('change', updateRewardPreview);
+
+        function updateRewardPreview() {
+            const amt = parseFloat(document.getElementById('expAmount').value) || 0;
+            const rate = parseFloat(document.getElementById('expRewardRate').value) || 0;
+            const curr = document.getElementById('expCurrency').value;
+            const exRate = travelData.rate || 0.22;
+            let twdAmt = curr === 'TWD' ? amt : amt * exRate;
+            let reward = Math.round(twdAmt * (rate / 100));
+            document.getElementById('rewardPreview').innerText = `預計回饋: $${reward}`;
+        }
     </script>
 </body>
 </html>
